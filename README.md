@@ -1,2 +1,2 @@
-# Contributors: Austin Ezell, Andy Hua, Victor Santamaria
+# Contributors: Aaron Ezell, Andy Hua, Victor Santamaria
 # Supervisor: Dr. Ahmad Al-Shami
