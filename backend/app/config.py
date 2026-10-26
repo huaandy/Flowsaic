@@ -16,6 +16,8 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        # Never echo the bad value in validation errors: it could be a real password or key.
+        hide_input_in_errors=True,
     )
 
     environment: Literal["development", "test", "production"] = "development"

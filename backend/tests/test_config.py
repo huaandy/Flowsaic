@@ -26,3 +26,10 @@ def test_missing_database_url_fails_fast(monkeypatch):
     monkeypatch.delenv("DATABASE_URL")
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_validation_errors_do_not_echo_secret_values(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "short-but-secret")
+    with pytest.raises(ValidationError) as error:
+        Settings()
+    assert "short-but-secret" not in str(error.value)
