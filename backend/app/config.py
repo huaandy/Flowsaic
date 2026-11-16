@@ -1,42 +1,32 @@
-"""App settings, read from environment variables (or a local .env file).
-
-Every secret and environment-specific value lives here, in one place.
-Nothing secret is ever hard-coded. See .env.example for the variable names.
-"""
+"""Settings, read from backend/.env. Secrets live only there (AGENTS.md ground rule 2)."""
 
 from functools import lru_cache
-from typing import Literal
+from pathlib import Path
 
-from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+REPO_DIR = BACKEND_DIR.parent
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
-        # Never echo the bad value in validation errors: it could be a real password or key.
+        # Keep secret values out of validation error messages.
         hide_input_in_errors=True,
     )
 
-    environment: Literal["development", "test", "production"] = "development"
+    database_url: str
 
-    # SecretStr hides the value when printed or logged ("**********"),
-    # so a stray print(settings) can't leak the password or key.
-    database_url: SecretStr
-    secret_key: SecretStr = Field(min_length=32)
-
-    @field_validator("database_url", "secret_key")
-    @classmethod
-    def reject_placeholders(cls, value: SecretStr) -> SecretStr:
-        # Refuse to start with the placeholder values copied from .env.example.
-        if "CHANGE_ME" in value.get_secret_value():
-            raise ValueError("still set to the .env.example placeholder; set a real value")
-        return value
+    # Only needed by the embedding and search scripts, so the API starts without it.
+    gemini_api_key: str | None = None
+    gemini_model: str | None = None
+    embedding_model: str = "gemini-embedding-2"
+    embedding_dim: int = 768
 
 
 @lru_cache
 def get_settings() -> Settings:
-    """Load settings once and reuse them. Fails at startup if a required value is missing."""
     return Settings()

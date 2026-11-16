@@ -1,25 +1,24 @@
 [project]
 name = "flowsaic-backend"
 version = "0.1.0"
-description = "Flowsaic backend API (FastAPI)"
-readme = "README.md"
-authors = [
-    { name = "victordying", email = "vsantamariajr@gmail.com" }
-]
-requires-python = ">=3.14"
+description = "Flowsaic backend: FastAPI, Postgres + pgvector, Gemini"
+requires-python = ">=3.13"
 dependencies = [
-    "fastapi[standard]>=0.142.4",
-    "pydantic-settings>=2.0",
-    "sqlalchemy>=2.0",
-    "alembic>=1.13",
-    "psycopg[binary]>=3.2",
-]
-
-[dependency-groups]
-dev = [
-    "pytest>=8.0",
+    "alembic>=1.20.1",
+    "fastapi[standard]>=0.163.1",
+    "google-genai>=3.3.0",
+    "pandas>=3.1.1",
+    "pgvector>=0.5.1",
+    "psycopg[binary]>=3.3.9",
+    "pydantic-settings>=2.16.3",
+    "sqlalchemy>=2.1.8",
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
 testpaths = ["tests"]
+pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
