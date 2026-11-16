@@ -1,0 +1,28 @@
+# Local development database: Postgres 17 with pgvector.
+# Start:  docker compose up -d      Stop:  docker compose down
+# The password below is for this local container only. Never reuse it anywhere real.
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: flowsaic-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flowsaic
+      POSTGRES_PASSWORD: flowsaic_dev
+      POSTGRES_DB: flowsaic
+    ports:
+      # Host port 5433 (5432 is often taken by a local Postgres). Reachable from this laptop only.
+      # Both loopback addresses are bound because "localhost" resolves to IPv6 (::1) first on
+      # Windows; with IPv4 only, the driver stalls on ::1 before falling back.
+      - "127.0.0.1:5433:5432"
+      - "[::1]:5433:5432"
+    volumes:
+      - flowsaic_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowsaic -d flowsaic"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  flowsaic_pgdata:

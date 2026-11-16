@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flowsaic dev test page</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1c2330; --muted:#5d6878; --line:#d9dee6; --accent:#1f5fbf; --warn:#8a5a00; --warn-bg:#fff4d6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14181f; --card:#1c222c; --text:#e6eaf0; --muted:#9aa5b5; --line:#2e3744; --accent:#6aa5ff; --warn:#ffd27a; --warn-bg:#3a2f12; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width:920px; margin:0 auto; padding:16px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .banner { background:var(--warn-bg); color:var(--warn); padding:8px 12px; border-radius:6px; margin:10px 0; font-size:13px; }
+  .stats { color:var(--muted); font-size:13px; margin-bottom:12px; }
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:14px; overflow-x:auto; }
+  .tabs button { white-space:nowrap; flex:none; background:none; border:0; border-bottom:3px solid transparent; padding:8px 14px; font:inherit; color:var(--muted); cursor:pointer; }
+  .tabs button.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+  form { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; align-items:center; }
+  input[type=text] { flex:1; min-width:200px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font:inherit; background:var(--card); color:var(--text); }
+  button.go { padding:8px 16px; border:0; border-radius:6px; background:var(--accent); color:#fff; font:inherit; cursor:pointer; }
+  button.go:disabled { opacity:.5; cursor:default; }
+  label { color:var(--muted); font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:10px; }
+  .card h3 { margin:0; font-size:15px; }
+  .meta { color:var(--muted); font-size:13px; margin:2px 0 6px; }
+  .desc { margin:6px 0; }
+  .badge { display:inline-block; font-size:12px; padding:1px 7px; border-radius:10px; border:1px solid var(--line); color:var(--muted); margin-left:6px; font-weight:400; }
+  details { margin-top:6px; }
+  summary { cursor:pointer; color:var(--accent); font-size:13px; }
+  .table-wrap { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; font-size:13px; margin-top:6px; }
+  th, td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; }
+  .note { color:var(--muted); font-size:13px; }
+  .error { color:#c0392b; }
+  #chat-log { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .msg { padding:9px 12px; border-radius:8px; white-space:pre-wrap; max-width:85%; }
+  .msg.user { align-self:flex-end; background:var(--accent); color:#fff; }
+  .msg.assistant { align-self:flex-start; background:var(--card); border:1px solid var(--line); }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .chips button { padding:5px 10px; border:1px solid var(--line); border-radius:14px; background:var(--card); color:var(--text); font:inherit; font-size:13px; cursor:pointer; }
+  .chips button.active { border-color:var(--accent); color:var(--accent); font-weight:600; }
+  .pager { display:flex; gap:10px; align-items:center; margin:8px 0; font-size:13px; color:var(--muted); }
+  .pager button { padding:4px 10px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--text); font:inherit; cursor:pointer; }
+  .pager button:disabled { opacity:.4; cursor:default; }
+  #db-view td { max-width:340px; overflow:hidden; text-overflow:ellipsis; }
+  #db-view td.null { color:var(--muted); font-style:italic; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Flowsaic dev test page</h1>
+  <div class="banner">Developer test page for looking at the loaded data. This is not the Flowsaic app and not part of the contract.</div>
+  <div class="stats" id="stats">Loading counts…</div>
+
+  <div class="tabs">
+    <button data-tab="search" class="active">Search</button>
+    <button data-tab="browse">Browse</button>
+    <button data-tab="chat">Chat</button>
+    <button data-tab="database">Database</button>
+  </div>
+
+  <section id="tab-search">
+    <p class="note">Search course descriptions by meaning (Gemini embeddings + pgvector). Smaller distance = closer match.</p>
+    <form id="search-form">
+      <input type="text" id="search-q" placeholder='Try "intro to programming" or "working with animals"' maxlength="300" required>
+      <button class="go" type="submit">Search</button>
+    </form>
+    <div id="search-results"></div>
+  </section>
+
+  <section id="tab-browse" class="hidden">
+    <p class="note">Look up courses by code or title (plain text match, no AI). Shows up to 30.</p>
+    <form id="browse-form">
+      <input type="text" id="browse-q" placeholder='Try "CSCI" or "biology"' maxlength="100">
+      <label><input type="checkbox" id="browse-offered" checked> Offered this term only</label>
+      <button class="go" type="submit">Browse</button>
+    </form>
+    <div id="browse-results"></div>
+  </section>
+
+  <section id="tab-chat" class="hidden">
+    <p class="note">Ask Gemini about courses. Each question finds the 8 most relevant courses and gives Gemini only those, so it can't see the whole catalog, your schedule or any student data.</p>
+    <div id="chat-log"></div>
+    <form id="chat-form">
+      <input type="text" id="chat-q" placeholder='Try "what should I take if I like animals?"' maxlength="1000" required>
+      <button class="go" type="submit">Send</button>
+      <button class="go" type="button" id="chat-clear" style="background:var(--muted)">Clear</button>
+    </form>
+  </section>
+
+  <section id="tab-database" class="hidden">
+    <p class="note">The raw tables in Postgres, read-only, 50 rows at a time. <b>doc_chunks</b> is the RAG table: one row per course description with its embedding. Passwords are never shown.</p>
+    <div id="db-tables" class="chips"></div>
+    <div id="db-view"></div>
+  </section>
+</main>
+
+<script>
+// All data is added with textContent, never innerHTML, so course text can't inject markup.
+const el = (tag, cls, text) => {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined && text !== null) node.textContent = text;
+  return node;
+};
+
+const ERRORS = {
+  ai_unavailable: "Gemini could not be reached or refused the request. Check the key, the model name and the daily limit.",
+  gemini_model_not_set: "GEMINI_MODEL is not set in backend/.env.",
+  ai_empty_answer: "Gemini returned an empty answer. Try rephrasing.",
+  invalid_request: "That input was not accepted (empty or too long).",
+  table_not_found: "That table does not exist.",
+};
+
+async function api(path, options) {
+  const response = await fetch(path, options);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(ERRORS[data.error] || data.error || "Request failed (" + response.status + ")");
+  return data;
+}
+
+function prereqText(groups) {
+  if (!groups.length) return "none listed";
+  return groups.map(g => g.length > 1 ? "(" + g.join(" or ") + ")" : g[0]).join(" and ");
+}
+
+function courseCard(course) {
+  const card = el("div", "card");
+  const title = el("h3", null, course.code + "  " + course.title);
+  if (course.distance !== undefined) title.append(el("span", "badge", "distance " + course.distance.toFixed(4)));
+  title.append(el("span", "badge", course.sections.length ? course.sections.length + " section" + (course.sections.length > 1 ? "s" : "") : "not offered this term"));
+  card.append(title);
+  card.append(el("div", "meta", [
+    course.credits !== null ? course.credits + (course.credits === 1 ? " credit" : " credits") : "credits unknown",
+    course.department || "department unknown",
+    "prereqs: " + prereqText(course.prereq_groups),
+  ].join("  ·  ")));
+  card.append(el("div", "desc", course.description || "No description."));
+  if (course.other_requirements) card.append(el("div", "note", "Other requirements: " + course.other_requirements));
+
+  if (course.sections.length) {
+    const details = el("details");
+    details.append(el("summary", null, "Show sections"));
+    const wrap = el("div", "table-wrap");
+    const table = el("table");
+    const head = el("tr");
+    ["Sec", "Days", "Time", "Instructor", "Where", "Seats open"].forEach(h => head.append(el("th", null, h)));
+    table.append(head);
+    course.sections.forEach(s => {
+      const row = el("tr");
+      [
+        s.section_number,
+        s.days || "—",
+        s.start_time ? s.start_time + "–" + s.end_time : "online / TBA",
+        s.instructor,
+        [s.building || s.location, s.room].filter(Boolean).join(" ") || "—",
+        s.seats_open + " of " + s.capacity,
+      ].forEach(v => row.append(el("td", null, v)));
+      table.append(row);
+    });
+    wrap.append(table);
+    details.append(wrap);
+    card.append(details);
+  }
+  return card;
+}
+
+function showCourses(target, courses, emptyText) {
+  target.replaceChildren();
+  if (!courses.length) { target.append(el("p", "note", emptyText)); return; }
+  courses.forEach(c => target.append(courseCard(c)));
+}
+
+async function run(form, target, work) {
+  const button = form.querySelector("button[type=submit]");
+  button.disabled = true;
+  if (target) target.replaceChildren(el("p", "note", "Working…"));
+  try { await work(); }
+  catch (err) { if (target) target.replaceChildren(el("p", "error", err.message)); else throw err; }
+  finally { button.disabled = false; }
+}
+
+// Tabs
+document.querySelectorAll(".tabs button").forEach(button => button.addEventListener("click", () => {
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b === button));
+  ["search", "browse", "chat", "database"].forEach(name => document.getElementById("tab-" + name).classList.toggle("hidden", name !== button.dataset.tab));
+  if (button.dataset.tab === "database") loadTables();
+}));
+
+// Database
+const dbTables = document.getElementById("db-tables");
+const dbView = document.getElementById("db-view");
+let currentTable = null;
+
+async function loadTables() {
+  try {
+    const data = await api("/dev/tables");
+    dbTables.replaceChildren();
+    data.tables.forEach(t => {
+      const chip = el("button", t.name === currentTable ? "active" : null, t.name + " (" + t.rows.toLocaleString() + ")");
+      chip.type = "button";
+      chip.addEventListener("click", () => showTable(t.name, 0));
+      dbTables.append(chip);
+    });
+    if (!currentTable) dbView.replaceChildren(el("p", "note", "Pick a table above."));
+  } catch (err) { dbView.replaceChildren(el("p", "error", err.message)); }
+}
+
+async function showTable(name, offset) {
+  currentTable = name;
+  [...dbTables.children].forEach(chip => chip.classList.toggle("active", chip.textContent.startsWith(name + " (")));
+  dbView.replaceChildren(el("p", "note", "Loading…"));
+  try {
+    const data = await api("/dev/tables/" + encodeURIComponent(name) + "?offset=" + offset);
+    const pager = el("div", "pager");
+    const prev = el("button", null, "← Previous"); prev.type = "button";
+    const next = el("button", null, "Next →"); next.type = "button";
+    prev.disabled = offset === 0;
+    next.disabled = offset + data.rows.length >= data.total;
+    prev.addEventListener("click", () => showTable(name, Math.max(0, offset - data.limit)));
+    next.addEventListener("click", () => showTable(name, offset + data.limit));
+    const range = data.total ? "Rows " + (offset + 1).toLocaleString() + "–" + (offset + data.rows.length).toLocaleString() + " of " + data.total.toLocaleString() : "This table is empty.";
+    pager.append(prev, next, el("span", null, name + "  ·  " + range));
+
+    const wrap = el("div", "table-wrap");
+    const table = el("table");
+    const head = el("tr");
+    data.columns.forEach(c => head.append(el("th", null, c)));
+    table.append(head);
+    data.rows.forEach(values => {
+      const row = el("tr");
+      values.forEach(v => {
+        const cell = el("td", v === null ? "null" : null, v === null ? "null" : String(v));
+        if (v !== null) cell.title = String(v);  // hover shows the full value
+        row.append(cell);
+      });
+      table.append(row);
+    });
+    wrap.append(table);
+    dbView.replaceChildren(pager, wrap);
+  } catch (err) { dbView.replaceChildren(el("p", "error", err.message)); }
+}
+
+// Counts
+api("/dev/stats").then(s => {
+  document.getElementById("stats").textContent =
+    "Loaded: " + s.courses.toLocaleString() + " courses · " + s.sections.toLocaleString() + " sections (" + (s.terms.join(", ") || "no term") + ") · " +
+    s.prereq_rows.toLocaleString() + " prereq rows · " + s.embedded_chunks.toLocaleString() + " embedded descriptions";
+}).catch(err => { document.getElementById("stats").textContent = "Could not load counts: " + err.message; });
+
+// Search
+const searchResults = document.getElementById("search-results");
+document.getElementById("search-form").addEventListener("submit", event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  run(form, searchResults, async () => {
+    const data = await api("/dev/search?q=" + encodeURIComponent(document.getElementById("search-q").value));
+    showCourses(searchResults, data.results, "No results.");
+  });
+});
+
+// Browse
+const browseResults = document.getElementById("browse-results");
+document.getElementById("browse-form").addEventListener("submit", event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  run(form, browseResults, async () => {
+    const params = new URLSearchParams({ search: document.getElementById("browse-q").value, offered_only: document.getElementById("browse-offered").checked });
+    const data = await api("/dev/courses?" + params);
+    showCourses(browseResults, data.results, "No courses match.");
+    if (data.results.length === data.limit) browseResults.append(el("p", "note", "Showing the first " + data.limit + ". Narrow the search to see others."));
+  });
+});
+
+// Chat
+const chatLog = document.getElementById("chat-log");
+let history = [];
+function addMessage(role, text) {
+  const node = el("div", "msg " + role, text);
+  chatLog.append(node);
+  node.scrollIntoView({ block: "nearest" });
+  return node;
+}
+document.getElementById("chat-clear").addEventListener("click", () => { history = []; chatLog.replaceChildren(); });
+document.getElementById("chat-form").addEventListener("submit", event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const input = document.getElementById("chat-q");
+  const message = input.value.trim();
+  if (!message) return;
+  addMessage("user", message);
+  input.value = "";
+  const pending = addMessage("assistant", "Thinking…");
+  run(form, null, async () => {
+    const data = await api("/dev/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, history }) });
+    pending.textContent = data.answer;
+    const details = el("details");
+    details.append(el("summary", null, "Courses given to Gemini for this answer (" + data.courses_given_to_ai.length + ", model " + data.model + ")"));
+    data.courses_given_to_ai.forEach(c => details.append(el("div", "note", c.code + "  " + c.title + "  (distance " + c.distance.toFixed(4) + ")")));
+    pending.append(details);
+    history.push({ role: "user", text: message }, { role: "assistant", text: data.answer });
+    history = history.slice(-20);
+  }).catch(err => { pending.textContent = err.message; pending.classList.add("error"); });
+});
+</script>
+</body>
+</html>
