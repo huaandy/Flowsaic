@@ -1,3 +1,5 @@
+"""Entry point for the Flowsaic API. Start it with: uv run fastapi dev app/main.py"""
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse

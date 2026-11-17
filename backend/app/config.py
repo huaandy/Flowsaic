@@ -27,6 +27,6 @@ class Settings(BaseSettings):
     embedding_dim: int = 768
 
 
-@lru_cache
+@lru_cache  # read .env once, then reuse; restart the server after changing .env
 def get_settings() -> Settings:
     return Settings()
