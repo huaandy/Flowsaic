@@ -51,6 +51,8 @@ def uuid_pk() -> Mapped[uuid.UUID]:
 
 
 class Term(Base):
+    """A semester, e.g. Spring 2027."""
+
     __tablename__ = "terms"
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -59,6 +61,8 @@ class Term(Base):
 
 
 class Course(Base):
+    """A catalog course, e.g. CSCI 3103. Exists whether or not it is offered this term."""
+
     __tablename__ = "courses"
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -84,6 +88,8 @@ class CoursePrereq(Base):
 
 
 class Section(Base):
+    """One offering of a course in a term: who teaches it, when, where, and seats."""
+
     __tablename__ = "sections"
     __table_args__ = (UniqueConstraint("course_id", "term_id", "section_number"),)
 
@@ -105,6 +111,8 @@ class Section(Base):
 
 
 class DegreePlan(Base):
+    """A degree, e.g. BS Computer Science 2023. Its requirements are a tree of groups."""
+
     __tablename__ = "degree_plans"
     __table_args__ = (UniqueConstraint("name", "catalog_year"),)
 
@@ -115,6 +123,8 @@ class DegreePlan(Base):
 
 
 class RequirementGroup(Base):
+    """One node in a degree plan's tree. rule: 'all' courses, or 'choose_hours' worth."""
+
     __tablename__ = "requirement_groups"
     __table_args__ = (CheckConstraint("rule IN ('all', 'choose_hours')", name="rule"),)
 
@@ -132,6 +142,8 @@ class RequirementGroup(Base):
 
 
 class RequirementCourse(Base):
+    """A course that counts toward a requirement group."""
+
     __tablename__ = "requirement_courses"
 
     group_id: Mapped[uuid.UUID] = mapped_column(
@@ -154,6 +166,8 @@ class Student(Base):
 
 
 class CompletedCourse(Base):
+    """A course a student has finished or is taking now."""
+
     __tablename__ = "completed_courses"
     __table_args__ = (CheckConstraint("status IN ('completed', 'in_progress')", name="status"),)
 
@@ -165,6 +179,8 @@ class CompletedCourse(Base):
 
 
 class Schedule(Base):
+    """A saved schedule for one student and term, built by hand or suggested by the AI."""
+
     __tablename__ = "schedules"
     __table_args__ = (CheckConstraint("source IN ('manual', 'ai')", name="source"),)
 
@@ -177,6 +193,8 @@ class Schedule(Base):
 
 
 class ScheduleSection(Base):
+    """A section that is part of a saved schedule."""
+
     __tablename__ = "schedule_sections"
 
     schedule_id: Mapped[uuid.UUID] = mapped_column(

@@ -1,5 +1,8 @@
 """initial schema
 
+Creates every table in app/models.py. Apply with: uv run alembic upgrade head
+Never edit this file after it has been applied; add a new migration instead.
+
 Revision ID: 0001
 Revises: 
 Create Date: 2026-11-16 12:26:20.552349
