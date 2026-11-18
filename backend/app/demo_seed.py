@@ -10,21 +10,34 @@ Each one is built around real Spring 2027 sections so the demo shows real result
   on the same schedule); ACCT 2003-001 and ECON 2103-001 overlap on MWF 09:00.
 - Sam Okafor, Psychology senior: nearly done. Failed PSYC 3183 (an F row) and is
   retaking it, so anything counting completed courses must look at the grade.
-- New Student (user 4 on the login page): nothing loaded. Connect mySAU fills their record
-  from the real course schedule and their own degree audit. Reset to empty on every run.
+- Returning Student (user 4 on the login page): filled by Connect mySAU and kept, across
+  restarts, sign-outs and seed runs (`clear_returning` empties it).
+- New Student (user 5): filled by Connect mySAU, emptied at startup, sign-in, sign-out and
+  on every seed run, so it is a first-time student every time.
 
 All names and emails are made up. Re-running updates the students in place (matched on
 email) and replaces only their source='manual' course rows. Nothing is written unless
 every degree plan and every course code is in the database.
 """
 
+import uuid
 from dataclasses import dataclass, field
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db import SessionLocal
-from app.models import CompletedCourse, Course, DegreePlan, Student, StudentRequirement
+from app.models import (
+    CalendarEvent,
+    CompletedCourse,
+    Course,
+    DegreePlan,
+    Schedule,
+    Student,
+    StudentPreferences,
+    StudentRequirement,
+    StudentSettings,
+)
 
 CATALOG_YEAR = "2026-2027"
 DEMO_PASSWORD = "flowsaic-demo"  # plain demo password, fine for semester 1 (AGENTS.md)
@@ -131,11 +144,39 @@ SAM = DemoStudent(
 
 DEMO_STUDENTS: tuple[DemoStudent, ...] = (ALEX, JORDAN, SAM)
 
-# User 4 on the login page: a brand-new student with nothing loaded. They fill their own
-# record with "Connect mySAU" (course schedule + their degree audit). Every seed run resets
-# them to empty, which also removes a real audit before a database dump is shared.
+# Two placeholder accounts for "Connect mySAU" (course schedule + the person's own degree
+# audit). Neither has a public plan or fake courses; whatever they show came from mySAU.
+#
+# User 4, Returning Student: keeps what Connect mySAU saved, across restarts, sign-outs and
+# seed runs, like a student coming back. `seed_demo.py --clear-returning` empties it (do
+# that before a database dump is shared: it holds a real audit).
+RETURNING_STUDENT_NAME = "Returning Student"
+RETURNING_STUDENT_EMAIL = "returning.student@demo.flowsaic.test"
+# User 4's email before Nov 17. The seed renames that row to the returning student, so an
+# audit already connected on it is kept.
+OLD_NEW_STUDENT_EMAIL = "new.student@demo.flowsaic.test"
+
+# User 5, New Student: a first-time student every time. Emptied (audit, courses, saved
+# schedules) when the backend starts, when they sign in and when they sign out.
 NEW_STUDENT_NAME = "New Student"
-NEW_STUDENT_EMAIL = "new.student@demo.flowsaic.test"
+NEW_STUDENT_EMAIL = "new.user@demo.flowsaic.test"
+
+# Accounts that start with a placeholder name. Connect mySAU replaces it with the student's
+# first and last name from their audit; emptying the account puts the placeholder back.
+PLACEHOLDER_EMAILS = frozenset({RETURNING_STUDENT_EMAIL, NEW_STUDENT_EMAIL})
+PLACEHOLDER_NAMES = frozenset({RETURNING_STUDENT_NAME, NEW_STUDENT_NAME})
+
+# The student fields Connect mySAU fills in, emptied.
+EMPTY_AUDIT_FIELDS = {
+    "degree_plan_id": None,
+    "classification": None,
+    "major": None,
+    "catalog_year": None,
+    "has_hold": False,
+    "total_hours_earned": None,
+    "total_hours_needed": None,
+    "audit_refreshed_at": None,
+}
 
 
 class SeedError(Exception):
@@ -153,35 +194,80 @@ class SeededStudent:
     earned_hours: int
 
 
-def _reset_new_student(session) -> SeededStudent:
-    """Create user 4, or wipe everything a connect saved for them."""
-    values = {
-        "name": NEW_STUDENT_NAME,
-        "email": NEW_STUDENT_EMAIL,
-        "password": DEMO_PASSWORD,
-        "degree_plan_id": None,
-        "classification": None,
-        "major": None,
-        "catalog_year": None,
-        "has_hold": False,
-        "total_hours_earned": None,
-        "total_hours_needed": None,
-        "audit_refreshed_at": None,
-    }
-    student_id = session.scalar(
+def _clear_student(session, student_id, placeholder_name: str | None = None) -> None:
+    """Empty one student's record: courses, audit requirements, saved schedules (their
+    sections go with them), calendar events, scheduling preferences, settings (photo included)
+    and the audit fields. With placeholder_name, the name (from their audit) goes back to it.
+    Email and password stay."""
+    for model in (CompletedCourse, StudentRequirement, Schedule, CalendarEvent, StudentPreferences, StudentSettings):
+        session.execute(delete(model).where(model.student_id == student_id))
+    name = {"name": placeholder_name} if placeholder_name else {}
+    session.execute(update(Student).where(Student.id == student_id).values(**EMPTY_AUDIT_FIELDS, **name))
+
+
+def clear_new_student(only_if: uuid.UUID | None = None) -> bool:
+    """Empty user 5 (New Student). Called at startup, sign-in and sign-out.
+
+    With only_if, do it only when that student is user 5 (sign-out passes whoever it was).
+    True if user 5 was emptied.
+    """
+    with SessionLocal() as session, session.begin():
+        student_id = session.scalar(select(Student.id).where(Student.email == NEW_STUDENT_EMAIL))
+        if student_id is None or (only_if is not None and student_id != only_if):
+            return False
+        _clear_student(session, student_id, NEW_STUDENT_NAME)
+        return True
+
+
+def _upsert_placeholder(session, name: str, email: str) -> uuid.UUID:
+    """Create the account, or reset its password only: never its data, and never the name
+    Connect mySAU gave it (clearing the account puts the placeholder name back)."""
+    values = {"name": name, "email": email, "password": DEMO_PASSWORD}
+    return session.scalar(
         insert(Student)
-        .values(**values)
-        .on_conflict_do_update(index_elements=[Student.email], set_=values)
+        .values(**values, **EMPTY_AUDIT_FIELDS)
+        .on_conflict_do_update(index_elements=[Student.email], set_={"password": DEMO_PASSWORD})
         .returning(Student.id)
     )
-    session.execute(delete(CompletedCourse).where(CompletedCourse.student_id == student_id))
-    session.execute(delete(StudentRequirement).where(StudentRequirement.student_id == student_id))
+
+
+def _seed_returning_student(session, clear: bool) -> SeededStudent:
+    """User 4. Keeps its mySAU data unless clear=True."""
+    if session.scalar(select(Student.id).where(Student.email == RETURNING_STUDENT_EMAIL)) is None:
+        # The old user 4 becomes the returning student, with whatever it connected.
+        session.execute(
+            update(Student).where(Student.email == OLD_NEW_STUDENT_EMAIL)
+            .values(email=RETURNING_STUDENT_EMAIL, name=RETURNING_STUDENT_NAME)
+        )
+    student_id = _upsert_placeholder(session, RETURNING_STUDENT_NAME, RETURNING_STUDENT_EMAIL)
+    if clear:
+        _clear_student(session, student_id, RETURNING_STUDENT_NAME)
+    student = session.get(Student, student_id)
+    session.refresh(student)
+    statuses = list(session.scalars(
+        select(CompletedCourse.status).where(CompletedCourse.student_id == student_id)
+    ))
+    return SeededStudent(
+        RETURNING_STUDENT_NAME, RETURNING_STUDENT_EMAIL,  # the label, never a real name from an audit
+        f"{student.major} (from their mySAU audit)" if student.audit_refreshed_at else "(none until Connect mySAU)",
+        student.classification or "-",
+        statuses.count("completed"), statuses.count("in_progress"),
+        int(student.total_hours_earned or 0),
+    )
+
+
+def _reset_new_student(session) -> SeededStudent:
+    """User 5: create it, or empty it."""
+    _clear_student(session, _upsert_placeholder(session, NEW_STUDENT_NAME, NEW_STUDENT_EMAIL), NEW_STUDENT_NAME)
     return SeededStudent(NEW_STUDENT_NAME, NEW_STUDENT_EMAIL, "(none until Connect mySAU)", "-", 0, 0, 0)
 
 
-def seed_demo_students(students: tuple[DemoStudent, ...] = DEMO_STUDENTS) -> list[SeededStudent]:
-    """Upsert the demo students and replace their manual course rows, and reset the new
-    student (user 4), in one transaction."""
+def seed_demo_students(
+    students: tuple[DemoStudent, ...] = DEMO_STUDENTS, *, clear_returning: bool = False
+) -> list[SeededStudent]:
+    """Upsert the demo students and replace their manual course rows, create or keep the
+    returning student (user 4; emptied only with clear_returning) and reset the new student
+    (user 5), in one transaction."""
     results: list[SeededStudent] = []
     with SessionLocal() as session, session.begin():
         plans = dict(
@@ -251,5 +337,6 @@ def seed_demo_students(students: tuple[DemoStudent, ...] = DEMO_STUDENTS) -> lis
                     earned_hours=student.earned_hours,
                 )
             )
+        results.append(_seed_returning_student(session, clear_returning))
         results.append(_reset_new_student(session))
     return results

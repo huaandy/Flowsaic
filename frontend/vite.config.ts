@@ -31,9 +31,21 @@ react(),
       },
     },
     server: {
-      host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
+      // This laptop only: through the /api proxy the dev server reaches the backend, which can
+      // hold a real mySAU audit (user 4). Never expose it on the network.
+      host: process.env.FIGMA_DEV_SERVER_HOST || 'localhost',
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
+      // The frontend always calls /api/...; Vite forwards it to the FastAPI backend with /api
+      // stripped, so the session cookie stays on this origin. BACKEND_URL overrides the target
+      // (start.ps1 sets it when the backend runs on another port).
+      proxy: {
+        '/api': {
+          target: process.env.BACKEND_URL || 'http://127.0.0.1:8000',
+          changeOrigin: true,
+          rewrite: (requestPath) => requestPath.replace(/^\/api/, ''),
+        },
+      },
       watch: {
         ignored: [
           '**/.figma/**',
@@ -41,7 +53,7 @@ react(),
       },
     },
     preview: {
-      host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
+      host: process.env.FIGMA_DEV_SERVER_HOST || 'localhost',
       port: parseInt(process.env.PORT || '8443'),
     },
   }

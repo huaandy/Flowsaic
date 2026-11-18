@@ -1,15 +1,15 @@
 <#
-  Flowsaic backend setup for Windows.
+  Flowsaic setup for Windows (backend and React front end).
   Double-click setup.cmd in the Flowsaic folder (it runs this file).
 
-  Checks your tools and your .env file, starts the database, installs everything
-  (Chromium included) and loads all the data. Safe to run again: every step updates
+  Checks your tools (uv, Docker, Node.js) and your .env file, starts the database, installs
+  everything (Chromium and the front end's packages included) and loads all the data. Safe to run again: every step updates
   what's already there instead of duplicating it. It never prints secret values.
 
   Optional switches (for running without questions):
     -Schedule live|saved|keep   live = from mySAU (you sign in), saved = the Nov 16 file,
                                 keep = leave what's loaded
-    -ResetUsers yes|no          yes = recreate the demo users and empty user 4
+    -ResetUsers yes|no          yes = recreate the demo users and empty user 5 (user 4 keeps its mySAU data)
 #>
 param(
     [ValidateSet("ask", "live", "saved", "keep")] [string]$Schedule = "ask",
@@ -29,7 +29,8 @@ function Warn($text) { Write-Host "   !   $text" -ForegroundColor Yellow }
 function Stop-Setup($text) {
     Write-Host ""
     Write-Host "SETUP STOPPED: $text" -ForegroundColor Red
-    Write-Host "Fix that, then run setup.cmd again. Send Victor the red line if you're stuck."
+    Write-Host "Do what the red line says, then double-click setup.cmd again (it's safe to run as often as you like)."
+    Write-Host "Stuck? See Troubleshooting in README.md, or send the red line to the team chat."
     exit 1
 }
 function Ask($question, [bool]$default) {
@@ -58,25 +59,59 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 }
 Ok ((uv --version) | Out-String).Trim()
 
+# Docker Desktop runs the database. Just installed? Its command isn't on this window's PATH yet.
+$dockerApp = Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
+$dockerBin = Join-Path $env:ProgramFiles "Docker\Docker\resources\bin"
+if (-not (Get-Command docker -ErrorAction SilentlyContinue) -and (Test-Path (Join-Path $dockerBin "docker.exe"))) {
+    $env:Path = "$dockerBin;$env:Path"
+}
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Stop-Setup "Docker Desktop isn't installed. Install it from https://www.docker.com/products/docker-desktop/ and open it once."
+    Warn "Docker Desktop isn't installed. Flowsaic's database runs in it."
+    if ((Get-Command winget -ErrorAction SilentlyContinue) -and (Ask "Install Docker Desktop now (winget, official package; Windows asks for permission)?" $true)) {
+        winget install --id Docker.DockerDesktop --exact --accept-package-agreements --accept-source-agreements
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host ""
+            Write-Host "Docker Desktop is installed. Three one-time steps before Flowsaic can use it:" -ForegroundColor Yellow
+            Write-Host "  1. Restart Windows (Docker needs it the first time)."
+            Write-Host "  2. Open Docker Desktop from the Start menu, accept its terms (no account needed, you can skip sign-in)"
+            Write-Host "     and wait until it says 'Engine running'. If it asks to install or update WSL, say yes."
+            Write-Host "  3. Double-click setup.cmd again."
+            exit 0
+        }
+    }
+    Stop-Setup "Docker Desktop isn't installed. Get it from https://www.docker.com/products/docker-desktop/ (Download for Windows), install it, restart Windows and open Docker Desktop once."
 }
 if (-not (Test-Docker)) {
-    $dockerApp = Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
     if (Test-Path $dockerApp) {
         Write-Host "   Starting Docker Desktop..."
         Start-Process $dockerApp
     }
-    Write-Host "   Waiting for Docker (up to 3 minutes)..."
-    $deadline = (Get-Date).AddMinutes(3)
+    Write-Host "   Waiting for Docker (up to 5 minutes). The first time, Docker Desktop asks you to accept its terms: do that in its window."
+    $deadline = (Get-Date).AddMinutes(5)
     while (-not (Test-Docker)) {
         if ((Get-Date) -gt $deadline) {
-            Stop-Setup "Docker isn't running. Open Docker Desktop and wait until it says 'Engine running'."
+            Stop-Setup "Docker isn't running. Open Docker Desktop, accept its terms if asked, and wait until it says 'Engine running'. If it reports a WSL or virtualization problem, restart Windows first."
         }
         Start-Sleep -Seconds 3
     }
 }
 Ok "Docker is running"
+
+# Node.js runs the React front end (Vite). winget installs it to Program Files; a window opened
+# before that install doesn't have it on PATH yet, so look there too.
+$nodeDir = Join-Path $env:ProgramFiles "nodejs"
+if (-not (Get-Command npm -ErrorAction SilentlyContinue) -and (Test-Path (Join-Path $nodeDir "npm.cmd"))) { $env:Path = "$nodeDir;$env:Path" }
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    Warn "Node.js isn't installed. It runs the Flowsaic front end."
+    if ((Get-Command winget -ErrorAction SilentlyContinue) -and (Ask "Install Node.js LTS now (winget, official package)?" $true)) {
+        winget install --id OpenJS.NodeJS.LTS --exact --accept-package-agreements --accept-source-agreements
+        $env:Path = "$nodeDir;$env:Path"
+    }
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+        Stop-Setup "Node.js isn't available. Install the LTS version from https://nodejs.org/ (the big green button), close this window, then run setup.cmd again."
+    }
+}
+Ok ("Node.js " + ((node --version) | Out-String).Trim())
 
 # --- 2. .env -----------------------------------------------------------------------------------
 Step "2/7  Checking your .env file"
@@ -180,14 +215,19 @@ if ($health.Trim() -ne "healthy") { Stop-Setup "The database didn't become ready
 Ok "Database is up (flowsaic-db)"
 
 # --- 4. Packages, tables, Chromium ------------------------------------------------------------
-Step "4/7  Installing Flowsaic (packages, tables, Chromium)"
+Step "4/7  Installing Flowsaic (packages, tables, Chromium, front end)"
 uv sync
 if ($LASTEXITCODE -ne 0) { Stop-Setup "Installing the Python packages failed (uv sync)." }
 uv run alembic upgrade head
 if ($LASTEXITCODE -ne 0) { Stop-Setup "Building the database tables failed (alembic upgrade head)." }
 uv run playwright install chromium
 if ($LASTEXITCODE -ne 0) { Stop-Setup "Installing Chromium failed (playwright install chromium)." }
-Ok "Packages, tables and Chromium are installed"
+Push-Location (Join-Path $Repo "frontend")
+npm install --no-audit --no-fund
+$code = $LASTEXITCODE
+Pop-Location
+if ($code -ne 0) { Stop-Setup "Installing the front end's packages failed (npm install in frontend)." }
+Ok "Packages, tables, Chromium and the front end are installed"
 
 function Get-Counts {
     $counts = @{}
@@ -207,7 +247,8 @@ if ($choice -eq "ask") {
         if (Ask "Already loaded ($($counts['sections']) sections). Refresh it live from mySAU?" $false) { $choice = "live" }
     } else {
         $choice = "saved"
-        if (Ask "Load it live from mySAU? A browser opens and you sign in with your SAU account." $true) { $choice = "live" }
+        Write-Host "   The saved Spring 2027 schedule (in the repo) is enough to run and demo Flowsaic."
+        if (Ask "Load the newest one live from mySAU instead? A browser opens and you sign in with your own SAU account." $false) { $choice = "live" }
     }
 }
 if ($choice -eq "live") {
@@ -250,12 +291,12 @@ $reset = $ResetUsers -eq "yes"
 if ($counts["students"] -eq 0) {
     $reset = $true
 } elseif ($ResetUsers -eq "ask") {
-    $reset = Ask "Sign-in users already exist. Recreate them? (This also empties user 4 and removes any mySAU data on it.)" $false
+    $reset = Ask "Sign-in users already exist. Recreate them? (This empties user 5. User 4 keeps its mySAU data.)" $false
 }
 if ($reset) {
     uv run python ..\db\scripts\seed_demo.py
     if ($LASTEXITCODE -ne 0) { Stop-Setup "Creating the sign-in users failed." }
-    Ok "Sign-in users 1-4 are ready"
+    Ok "Sign-in users 1-5 are ready"
 } else {
     Ok "Kept the existing sign-in users"
 }
@@ -268,6 +309,21 @@ $counts = Get-Counts
 Ok ("Loaded: {0} sections, {1} courses ({2} searchable), {3} degree plans, {4} sign-in users" -f `
     $counts["sections"], $counts["courses"], $counts["embedded"], $counts["degree_plans"], $counts["students"])
 
+# Self-test (about 15 seconds): the backend's tests (no database, no Gemini) and the front end's
+# type check. A broken install shows up here, not in the middle of a demo.
+Write-Host "   Self-test: backend tests and front-end type check..."
+uv run pytest -q -p no:cacheprovider 2>&1 | Select-Object -Last 1 | ForEach-Object { Write-Host "   $_" }
+$testsOk = $LASTEXITCODE -eq 0
+Push-Location (Join-Path $Repo "frontend")
+npm run --silent typecheck 2>&1 | Out-Null
+$typesOk = $LASTEXITCODE -eq 0
+Pop-Location
+if ($testsOk -and $typesOk) {
+    Ok "Self-test passed"
+} else {
+    Warn "Part of the self-test failed (backend tests: $testsOk, front end: $typesOk). Flowsaic may still run; tell the team chat."
+}
+
 Write-Host ""
 Write-Host "All set! Double-click start.cmd to run Flowsaic." -ForegroundColor Green
-Write-Host "Then sign in at http://127.0.0.1:8000/ as 1, 2, 3 or 4 (any password)."
+Write-Host "Your browser opens http://localhost:8443/. Sign in as 1, 2, 3, 4 or 5 (any password)."

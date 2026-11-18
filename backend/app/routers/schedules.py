@@ -31,10 +31,13 @@ class CheckRequest(BaseModel):
 
 
 class CheckItem(BaseModel):
-    code: str = Field(description="time_overlap, missing_prereq, duplicate_course, already_completed, "
-                                  "section_full, not_on_plan or over_credit_limit")
+    code: str = Field(description="Conflicts: time_overlap, missing_prereq, duplicate_course, commitment_overlap. "
+                                  "Warnings: already_completed, section_full, not_on_plan, over_credit_limit, "
+                                  "commitment_overlap_flexible")
     section_ids: list[uuid.UUID]
     message: str = Field(description="Shown to the student as is")
+    event_ids: list[uuid.UUID] = Field(default_factory=list,
+                                       description="The calendar events involved (commitment codes only)")
 
 
 class CheckResult(BaseModel):
@@ -197,7 +200,8 @@ def check(body: CheckRequest, student_id: uuid.UUID = Depends(current_student_id
 def _checked_save(student_id: uuid.UUID, body: SaveRequest, schedule_id: uuid.UUID | None):
     result = run_check(student_id, list(dict.fromkeys(body.section_ids)), body.term_id)
     if result["conflicts"]:
-        conflicts = [{**c, "section_ids": [str(i) for i in c["section_ids"]]} for c in result["conflicts"]]
+        conflicts = [{**c, "section_ids": [str(i) for i in c["section_ids"]],
+                      "event_ids": [str(i) for i in c.get("event_ids", [])]} for c in result["conflicts"]]
         return JSONResponse(status_code=422, content={"error": "schedule_has_conflicts", "conflicts": conflicts})
     new_id = save_schedule(student_id, body, schedule_id)
     return get_schedule(student_id, new_id)

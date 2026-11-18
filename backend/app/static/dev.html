@@ -513,7 +513,7 @@ window.flowsaicUI = (() => {
     if (isDemoStudent()) {
       box.replaceChildren(
         h("h2", { text: "Demo student" }),
-        h("p", { class: "note", text: "A sample account on the public " + me.degree_plan.name + " degree map. Sign in as user 4 to try Connect mySAU with your own account." }),
+        h("p", { class: "note", text: "A sample account on the public " + me.degree_plan.name + " degree map. Sign in as user 4 (returning student, keeps your mySAU data) or 5 (new student, starts empty every time) to try Connect mySAU with your own account." }),
       );
       return;
     }
@@ -843,7 +843,8 @@ window.flowsaicUI = (() => {
   function greet() {
     const me = window.flowsaicMe;
     document.getElementById("flow-connect").hidden = !(me && !me.degree_plan && !me.connected_mysau);
-    const first = me && me.email !== "new.student@demo.flowsaic.test" ? me.name.split(" ")[0] : "there";
+    const placeholders = ["returning.student@demo.flowsaic.test", "new.user@demo.flowsaic.test"];
+    const first = me && !placeholders.includes(me.email) ? me.name.split(" ")[0] : "there";
     log.replaceChildren();
     bubble("flow", formatted("Hi " + first + "! I'm Flow. I can review your degree progress, help you choose courses and electives, and build a schedule around your commitments. What would you like to work on?"));
   }

@@ -3,7 +3,9 @@ Never put a real audit in tests or fixtures (prompt 2 privacy rules)."""
 
 from decimal import Decimal
 
-from app.mysau.audit_parser import AuditLine, parse_lines
+import pytest
+
+from app.mysau.audit_parser import AuditLine, first_and_last, parse_lines
 
 # One line per audit line: "indent | flags | text". Flags: B = on a shaded header bar,
 # M / X / P = met / not met / in progress icon beside the line.
@@ -132,11 +134,35 @@ def test_student_fields_and_no_personal_data():
     assert parsed.has_hold is True
     # Course Totals (68 here) wins over the header's Degree Hours (64).
     assert (parsed.total_hours_earned, parsed.total_hours_needed) == (Decimal("68.00"), Decimal("120.00"))
-    # Nothing personal anywhere in what was parsed: name, ID, address, phone, advisor, GPA, hold text.
+    # The name is kept as first and last only (Nov 18), never the middle initial.
+    assert parsed.student_name == "Testy Fakerson"
+    # Nothing else personal anywhere in what was parsed: ID, address, phone, advisor, GPA, hold text.
     everything = repr(parsed)
-    for private in ("Fakerson", "Testy", "999000111", "Imaginary Lane", "Nowhere", "555",
-                    "Mentor", "3.95", "3.9000", "Library Fine"):
+    for private in ("999000111", "Imaginary Lane", "Nowhere", "555", "Mentor", "3.95", "3.9000",
+                    "Library Fine", "Testy Q", "Fakerson, Testy"):
         assert private not in everything
+    # ...and the name stays out of every course and requirement (the page footer repeats it).
+    rest = repr(parsed.courses) + repr(parsed.requirements)
+    assert "Fakerson" not in rest and "Testy" not in rest
+
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    ("Fakerson, Testy Q.", "Testy Fakerson"),
+    ("FAKERSON, TESTY Q", "Testy Fakerson"),
+    ("Fakerson Jr., Testy", "Testy Fakerson Jr."),
+    ("O'Neil-Smith, Mary Ann", "Mary O'Neil-Smith"),
+    ("Testy Q. Fakerson", "Testy Fakerson"),
+    ("Cher", None),
+    ("Fakerson, ", None),
+    ("<b>Robert'); DROP", None),
+])
+def test_first_and_last_name(raw, expected):
+    assert first_and_last(raw) == expected
+
+
+def test_an_audit_without_a_readable_name_keeps_none():
+    lines = [line for line in fake_lines() if not line.text.startswith("Name:")]
+    assert parse_lines(lines).student_name is None
 
 
 def test_every_requirement_block_met_or_not_once():

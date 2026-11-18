@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     saumag_base_url: str = "https://www.saumag.edu"
     degree_maps_delay_seconds: float = 30.0
 
+    # Origins allowed to call the API with the session cookie (CORS), comma-separated.
+    # The default is the React dev server (Vite, port 8443). Never "*" (ground rule 9).
+    frontend_origins: str = "http://localhost:8443,http://127.0.0.1:8443"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """frontend_origins as a list. A "*" entry is dropped: credentials need exact origins."""
+        return [o.strip().rstrip("/") for o in self.frontend_origins.split(",") if o.strip() and o.strip() != "*"]
+
 
 class MissingSettings(RuntimeError):
     """A required setting isn't in the .env file. The message says what to do."""

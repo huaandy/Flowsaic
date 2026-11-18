@@ -1,5 +1,5 @@
 @echo off
-rem Start the Flowsaic backend (Windows) and open http://127.0.0.1:8000/
+rem Start Flowsaic (Windows): backend + React front end, opens http://localhost:8443/
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0backend\start.ps1" %*
 echo.
 pause

@@ -6,8 +6,9 @@ Input:
 - optional: course codes that may be added, best first (e.g. required, then choices,
   then electives), until the credits reach the target.
 - constraints (all optional). Hard: unavailable blocks, earliest start, latest end, days off,
-  instructors to avoid, open seats only, no online. Soft (ranking only): preferred time of
-  day, lunch break, preferred instructors, fewer days on campus, fewer full sections.
+  instructors to avoid, open seats only, no online / online only (fixed calendar events come in as
+  unavailable blocks). Soft (ranking only): preferred time of day, preferred days, lunch break,
+  preferred instructors, flexible calendar events, fewer days on campus, fewer full sections.
 Output: up to `limit` schedules (one section per course, no time overlaps), best first,
 plus the must courses that can't be scheduled and why.
 
@@ -29,6 +30,7 @@ from app.models import Course, Section
 NODE_BUDGET = 40_000  # search steps before we stop looking for more combinations
 KEEP = 400  # complete schedules kept for ranking
 MORNING_END, AFTERNOON_END = time(12, 0), time(17, 0)
+MIDDAY_START, MIDDAY_END = time(11, 0), time(14, 0)  # "midday": starts 11:00-13:59
 
 
 @dataclass
@@ -46,10 +48,13 @@ class Constraints:
     days_off: str = ""
     avoid_instructors: list[str] = field(default_factory=list)
     preferred_instructors: list[str] = field(default_factory=list)
-    preferred_time: str | None = None  # morning | afternoon | evening
+    preferred_time: str | None = None  # morning | midday | afternoon | evening
+    preferred_days: str = ""  # soft: letters; meeting on other days costs a little
+    flexible_blocks: list[Block] = field(default_factory=list)  # soft: flexible calendar events
     lunch: Block | None = None  # soft: days ignored, every meeting day
     open_seats_only: bool = False
     allow_online: bool = True
+    online_only: bool = False  # only online/TBA sections (a student who wants online classes only)
     min_credits: float | None = None
     max_credits: float = 18
 
@@ -67,6 +72,8 @@ def why_not(section: SectionInfo, c: Constraints) -> str | None:
         return "instructor to avoid"
     if not section.meets:
         return None if c.allow_online else "online or TBA"
+    if c.online_only:
+        return "meets in person"
     if set(section.days) & set(c.days_off.upper()):
         return "meets on a day off"
     if c.earliest_start and section.start < c.earliest_start:
@@ -94,6 +101,8 @@ def score(sections: list[SectionInfo], c: Constraints, priority: dict[str, int])
         days_used |= set(s.days)
         if c.preferred_time == "morning" and s.start < MORNING_END:
             total += 1
+        elif c.preferred_time == "midday" and MIDDAY_START <= s.start < MIDDAY_END:
+            total += 1
         elif c.preferred_time == "afternoon" and MORNING_END <= s.start < AFTERNOON_END:
             total += 1
         elif c.preferred_time == "evening" and s.start >= AFTERNOON_END:
@@ -102,6 +111,11 @@ def score(sections: list[SectionInfo], c: Constraints, priority: dict[str, int])
             total -= 1
         if c.lunch and s.start < c.lunch.end and c.lunch.start < s.end:
             total -= 1.5
+        if c.preferred_days:
+            total -= 0.5 * len(set(s.days) - set(c.preferred_days.upper()))
+        for block in c.flexible_blocks:
+            if set(s.days) & set(block.days.upper()) and s.start < block.end and block.start < s.end:
+                total -= 2
     total -= len(days_used) * 0.3
     return total
 
@@ -229,3 +243,11 @@ def load_offered_codes(term_id: uuid.UUID) -> list[str]:
             select(Course.code).join(Section, Section.course_id == Course.id)
             .where(Section.term_id == term_id, Section.active.is_(True)).distinct()
         ))
+
+
+def commitment_blocks(commitments) -> tuple[list[Block], list[Block]]:
+    """(hard, soft) blocks from checker Commitments: fixed events can't be overlapped, flexible
+    ones only rank lower."""
+    hard = [Block(c.day, c.start, c.end) for c in commitments if c.fixed]
+    soft = [Block(c.day, c.start, c.end) for c in commitments if not c.fixed]
+    return hard, soft

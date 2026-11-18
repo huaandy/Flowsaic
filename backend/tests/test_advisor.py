@@ -98,13 +98,14 @@ def all_text(request) -> str:
 
 # --- the student record -----------------------------------------------------------------------
 
-def test_record_has_the_facts_and_no_identity():
+def test_record_has_the_facts_and_only_the_first_name():
     record = build_student_record(make_data())
     assert "Computer Science, BS (2026-2027 catalog" in record and "Classification: Junior" in record
     assert "Passed: CSCI 3103" in record and "In progress now: MATH 1023" in record
     assert "[required] CSCI 4203" in record and "[choice] MATH 3043" in record
     assert "[elective] CSCI 4353" in record
-    assert "Alex" not in record
+    assert "First name: Alex" in record  # Victor's decision, Nov 18: the first name only
+    assert "@" not in record and "Rivera" not in record
 
 
 # --- tools ------------------------------------------------------------------------------------
@@ -169,7 +170,7 @@ def test_propose_runs_the_checker_and_caps_cards():
 
 # --- the loop ---------------------------------------------------------------------------------
 
-def test_flow_uses_tools_then_answers_and_never_sends_the_name():
+def test_flow_uses_tools_then_answers_with_the_first_name_only():
     client = FakeClient([
         call_response(("find_schedules", {"must": ["CSCI 4203"], "optional": ["CSCI 4353"], "min_credits": 6})),
         call_response(("propose_schedule", {"name": "Spring plan", "sections": ["CSCI 4203-001", "CSCI 4353-001"],
@@ -193,7 +194,9 @@ def test_flow_uses_tools_then_answers_and_never_sends_the_name():
     assert requests[1]["contents"][-1].parts[0].function_response.name == "find_schedules"
     assert requests[0]["config"].automatic_function_calling.disable is True
     for request in requests:
-        assert "Alex" not in all_text(request)  # privacy: the name never goes to Gemini
+        # Privacy: the first name goes to Gemini (Nov 18); no last name, email or ID.
+        assert "First name: Alex" in all_text(request)
+        assert "Rivera" not in all_text(request) and "@demo" not in all_text(request)
 
 
 def test_flow_stops_after_max_steps_with_a_text_answer():
@@ -212,12 +215,6 @@ def test_an_empty_answer_gets_one_retry():
     result = run_flow(make_data(), "hi", [], client=client, model="m")
     assert result["reply"] == "Here's what I found."
     assert advisor.ANSWER_NOW in all_text(client.models.requests[1])
-
-
-def test_suggest_mode_adds_instructions():
-    client = FakeClient([text_response("Here you go.")])
-    run_flow(make_data(), "Build my schedule", [], client=client, model="m", mode="suggest")
-    assert "Create Schedule form" in client.models.requests[0]["config"].system_instruction
 
 
 def test_gemini_errors_become_ai_unavailable():
@@ -246,6 +243,9 @@ def client(monkeypatch):
         "id": sid, "name": "Alex Rivera", "email": "a@demo.flowsaic.test", "classification": None, "major": None,
         "catalog_year": None, "degree_plan": None, "has_hold": False, "total_hours_earned": None,
         "total_hours_needed": None, "audit_refreshed_at": None, "connected_mysau": False})
+    from app.routers import ai, planning
+    # Nothing saved on /me/preferences: suggest uses the form alone.
+    monkeypatch.setattr(ai, "load_saved_preferences", lambda sid: dict(planning.DEFAULT_PREFERENCES))
     test_client = TestClient(app)
     test_client.student_id = student_id
     return test_client
@@ -261,7 +261,7 @@ def fake_result():
 
 def test_advisor_endpoint(client, monkeypatch):
     calls = []
-    monkeypatch.setattr(advisor, "advise", lambda sid, message, history, mode: calls.append((sid, message, history, mode)) or fake_result())
+    monkeypatch.setattr(advisor, "advise", lambda sid, message, history: calls.append((sid, message, history)) or fake_result())
     assert client.post("/ai/advisor", json={"message": "hi"}).json() == {"error": "not_authenticated"}
     client.post("/auth/login", json={"email": "1"})
     body = client.post("/ai/advisor", json={"message": "hi", "history": [{"role": "assistant", "text": "Hello"}]}).json()
@@ -269,7 +269,7 @@ def test_advisor_endpoint(client, monkeypatch):
     [proposal] = body["proposals"]
     assert proposal["term_id"] == str(TERM_ID) and len(proposal["section_ids"]) == 2
     assert proposal["sections"][0]["start_time"] == "14:10"
-    assert calls == [(client.student_id, "hi", [{"role": "assistant", "text": "Hello"}], "chat")]
+    assert calls == [(client.student_id, "hi", [{"role": "assistant", "text": "Hello"}])]
     assert client.post("/ai/advisor", json={"message": ""}).json() == {"error": "invalid_request"}
 
 
@@ -285,20 +285,27 @@ def test_advisor_endpoint_errors(client, monkeypatch, code, status):
 
 
 def test_suggest_endpoint(client, monkeypatch):
+    from app import suggest as suggest_engine
     from app.routers import ai
 
     calls = []
-    monkeypatch.setattr(advisor, "advise", lambda sid, message, history, mode: calls.append((message, mode)) or fake_result())
+    sections = [SECTIONS["CSCI 4203"][0], SECTIONS["MATH 3043"][0]]
+    warning = {"code": "section_full", "section_ids": [sections[1].id], "message": "MATH 3043-001 is full (23/20 enrolled)"}
+    monkeypatch.setattr(ai, "run_suggest", lambda sid, request: calls.append(request)
+                        or suggest_engine.Suggestion(sections, [], [warning], "because"))
     client.post("/auth/login", json={"email": "1"})
     body = client.post("/ai/suggest", json={"target_credits": 15, "unavailable": [{"days": "MWF", "start": "13:00", "end": "17:00"}],
                                             "preferred_time": "morning", "notes": "I like databases"}).json()
     assert body["explanation"] == "because" and len(body["section_ids"]) == 2
-    assert body["warnings"][0]["code"] == "section_full"
-    [(message, mode)] = calls
-    assert mode == "suggest"
-    assert message == ("Build my schedule for next term. Target: 15 credits. I can't do MWF 13:00-17:00. "
-                       "I prefer morning classes. Notes: I like databases")
-    assert ai.preferences_message(ai.Preferences()) == "Build my schedule for next term."
+    assert body["sections"][0]["start_time"] == "14:10"
+    assert body["warnings"][0]["code"] == "section_full" and body["conflicts"] == []
+    [request] = calls
+    assert request.target_credits == 15 and request.preferred_time == "morning" and request.notes == "I like databases"
+    assert [(b.days, f"{b.start:%H:%M}", f"{b.end:%H:%M}") for b in request.unavailable] == [("MWF", "13:00", "17:00")]
+    assert request.request_text == ("Build my schedule for next term. Target: 15 credits. I can't do MWF 13:00-17:00. "
+                                    "Keep my fixed calendar commitments free. I prefer morning classes. Notes: I like databases")
+    assert ai.preferences_message(ai.Preferences()) == ("Build my schedule for next term. "
+                                                         "Keep my fixed calendar commitments free.")
 
 
 def test_save_schedule_flow(client, monkeypatch):
@@ -321,7 +328,8 @@ def test_save_schedule_flow(client, monkeypatch):
     response = client.post("/schedules", json=body)
     assert response.status_code == 422
     assert response.json() == {"error": "schedule_has_conflicts", "conflicts": [
-        {"code": "time_overlap", "section_ids": [str(uuid.UUID(int=1))], "message": "A and B overlap on MW 10:00"}]}
+        {"code": "time_overlap", "section_ids": [str(uuid.UUID(int=1))], "message": "A and B overlap on MW 10:00",
+         "event_ids": []}]}
     assert client.post("/schedules", json={**body, "section_ids": []}).json() == {"error": "invalid_request"}
     assert client.post("/schedules", json={**body, "source": "robot"}).json() == {"error": "invalid_request"}
 
