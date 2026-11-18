@@ -48,9 +48,16 @@ Backend entry point: `backend/app/main.py`. Run with `uv sync`, then `uv run fas
 
 ## Run locally
 
-You need Git, Docker Desktop (running) and [uv](https://docs.astral.sh/uv/). Every laptop has its own database, filled once with the steps below. On Mac/Linux write `../db/scripts/...` instead of `..\db\scripts\...`.
+**The easy way (Windows):** install [Git](https://git-scm.com/) and [Docker Desktop](https://www.docker.com/products/docker-desktop/), clone the repo, put the `.env` from Victor in the `Flowsaic` folder (or `Flowsaic\backend`), then:
 
-1. **`.env`:** put it in `backend/.env` (start from `backend/.env.example`; get the Gemini key from Victor). Never commit it. Add `PUBLIC_REFRESH_ON_STARTUP=false` until step 5 is done, so the server doesn't start a live degree-map scrape of SAU's site on first launch.
+1. Double-click **`setup.cmd`** once. It checks your tools (installs uv if missing, starts Docker), fixes common `.env` mistakes (a `.env.txt` name, a "Unicode" save, a missing `DATABASE_URL`), starts the database, installs everything including Chromium, and loads all the data. It asks whether to load this term's course schedule live from mySAU (a browser opens and you sign in); if that fails it says why and uses the saved schedule. Safe to run again; it asks before resetting the sign-in users.
+2. Double-click **`start.cmd`** any time to run Flowsaic. It starts Docker and the database if needed, runs the server and opens http://127.0.0.1:8000/ (sign in as 1–4, any password). If Flowsaic is already running it just opens the page. `start.cmd -Port 8001` uses another port.
+
+The scripts are `backend/setup.ps1` and `backend/start.ps1`; `db/scripts/status.py` prints what's loaded. Settings are read from `backend/.env` and the repo-root `.env` (backend wins); a missing `DATABASE_URL` gives a plain message saying where to put the file.
+
+**By hand** (any OS; on Mac/Linux write `../db/scripts/...` instead of `..\db\scripts\...`). You need Git, Docker Desktop (running) and [uv](https://docs.astral.sh/uv/). Every laptop has its own database, filled once with these steps:
+
+1. **`.env`:** put it in `backend/.env` or the repo root (start from `backend/.env.example`; get the Gemini key from Victor). Never commit it.
 2. **Database:** `docker compose up -d` from the repo root starts Postgres 17 (pgvector image) on host port **5433** (5432 is often taken by a local Postgres).
 3. **Backend:** from `backend/`: `uv sync`, then `uv run alembic upgrade head` (builds the tables; Alembic lives in `backend/alembic/`), then `uv run playwright install chromium` once (for mySAU).
 4. **This term's course schedule, live from mySAU:** `uv run python ..\db\scripts\connect_mysau.py`. A Chromium window opens; sign in to mySAU yourself (Microsoft + Duo). It exports the live course schedule and loads it; no Flowsaic student is needed and nothing about your login is stored. If mySAU is down, `uv run python ..\db\scripts\import_sections.py` loads the committed Nov 16 file (`data/sections_spring_2027.csv`) instead.
