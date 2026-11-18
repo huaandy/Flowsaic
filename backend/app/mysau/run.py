@@ -79,11 +79,22 @@ def run_connect(
         captured.sections_csv = None
 
 
+class AuditNeedsStudent(ValueError):
+    """The audit attaches to an existing student; only the course schedule can run without one."""
+
+
 def start_connect(
-    student_id: uuid.UUID, fetch: list[str], *, wait: bool = False, **kwargs
+    student_id: uuid.UUID | None, fetch: list[str], *, wait: bool = False, **kwargs
 ) -> dict[str, uuid.UUID]:
-    """Check the student, then run the connect in a background thread (or wait for it)."""
-    if not student_exists(student_id):
+    """Check the student, then run the connect in a background thread (or wait for it).
+
+    student_id may be None for a sections-only connect: a teammate loading this term's live
+    course schedule onto their own laptop. The audit always needs an existing student.
+    """
+    if student_id is None:
+        if "audit" in fetch:
+            raise AuditNeedsStudent
+    elif not student_exists(student_id):
         raise StudentNotFound
     if not _lock.acquire(blocking=False):
         raise ConnectAlreadyRunning

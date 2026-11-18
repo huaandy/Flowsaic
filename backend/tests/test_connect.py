@@ -122,6 +122,29 @@ def test_run_imports_sections_and_saves_the_audit(monkeypatch, finished):
     assert captured.audit_pdf is None  # bytes dropped after use
 
 
+def test_sections_only_connect_needs_no_student(monkeypatch, finished):
+    # A teammate loading the live course schedule onto their own laptop: no Flowsaic student.
+    started = []
+    monkeypatch.setattr(run, "start_run", lambda kind, student_id=None: started.append((kind, student_id)) or uuid.uuid4())
+    monkeypatch.setattr(run, "student_exists", lambda sid: pytest.fail("no student lookup without a student"))
+    monkeypatch.setattr(run, "import_export_bytes",
+                        lambda data: SimpleNamespace(parsed=SimpleNamespace(sections=[1, 2])))
+    fetched = []
+
+    def browser(fetch, status):
+        fetched.append(set(fetch))
+        return Captured(sections_csv=b"csv")
+
+    run_ids = run.start_connect(None, ["sections"], wait=True, browser=browser)
+    assert started == [("sections", None)] and fetched == [{"sections"}]
+    assert finished[run_ids["sections"]] == {"ok": True, "rows_changed": 2}
+
+
+def test_the_audit_always_needs_a_student():
+    with pytest.raises(run.AuditNeedsStudent):
+        run.start_connect(None, ["sections", "audit"])
+
+
 def test_a_failed_login_fails_every_run(finished):
     def browser(fetch, status):
         raise ConnectError("login_timeout")
