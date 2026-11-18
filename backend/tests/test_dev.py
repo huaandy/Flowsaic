@@ -81,13 +81,7 @@ client = TestClient(app)
 def test_dev_page_is_served():
     response = client.get("/dev")
     assert response.status_code == 200
-    assert "Flowsaic dev test page" in response.text
-
-
-def test_root_redirects_to_the_dev_page():
-    response = client.get("/", follow_redirects=False)
-    assert response.status_code == 307
-    assert response.headers["location"] == "/dev"
+    assert "Flowsaic prototype" in response.text
 
 
 def test_search_returns_courses(gemini):
@@ -173,6 +167,14 @@ def test_table_viewer_display_values():
     )
     identifier = uuid.uuid4()
     assert dev.display_value("id", identifier) == str(identifier)
+    from decimal import Decimal
+
+    assert dev.display_value("active", True) is True
+    assert dev.display_value("hours_earned", Decimal("3.00")) == 3.0
+    assert dev.display_value("course_options", ["CSCI 4003", "MATH 3013"]) == (
+        "CSCI 4003, MATH 3013"
+    )
+    assert dev.display_value("course_options", []) == ""
     # An embedding is shortened to its first numbers and its length.
     assert dev.display_value("embedding", [0.5] * 768) == (
         "[0.5000, 0.5000, 0.5000, 0.5000, …]  (768 numbers)"

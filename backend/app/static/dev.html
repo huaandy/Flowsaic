@@ -3,12 +3,71 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Flowsaic dev test page</title>
+<title>Flowsaic prototype</title>
 <style>
-  :root { --bg:#f6f7f9; --card:#fff; --text:#1c2330; --muted:#5d6878; --line:#d9dee6; --accent:#1f5fbf; --warn:#8a5a00; --warn-bg:#fff4d6; }
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1c2330; --muted:#5d6878; --line:#d9dee6; --accent:#1f5fbf; --warn:#8a5a00; --warn-bg:#fff4d6;
+          --ok:#1e7a46; --ok-bg:#e3f4ea; --bad:#b03a2e; --bad-bg:#fbe5e2; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#14181f; --card:#1c222c; --text:#e6eaf0; --muted:#9aa5b5; --line:#2e3744; --accent:#6aa5ff; --warn:#ffd27a; --warn-bg:#3a2f12; }
+    :root { --bg:#14181f; --card:#1c222c; --text:#e6eaf0; --muted:#9aa5b5; --line:#2e3744; --accent:#6aa5ff; --warn:#ffd27a; --warn-bg:#3a2f12;
+            --ok:#7fdca4; --ok-bg:#16352a; --bad:#ff9b8f; --bad-bg:#3d1f1c; }
   }
+  .topline { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .topline .who { margin-left:auto; color:var(--muted); font-size:14px; }
+  button.ghost { background:none; color:var(--accent); border:1px solid var(--line); border-radius:6px; padding:4px 12px; font:inherit; font-size:14px; cursor:pointer; }
+  /* My profile tab */
+  #tab-profile h2 { font-size:16px; margin:0 0 8px; }
+  #tab-profile h3 { font-size:13px; margin:14px 0 2px; color:var(--muted); }
+  #tab-profile .card { padding:14px 16px; margin-bottom:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+  .stat small { display:block; color:var(--muted); font-size:12px; }
+  .steps { margin:8px 0 12px; padding-left:20px; color:var(--muted); font-size:14px; }
+  .runs { list-style:none; padding:0; margin:12px 0 0; }
+  .runs li { padding:6px 0; border-top:1px solid var(--line); display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+  .pill { display:inline-block; font-size:12px; padding:1px 8px; border-radius:10px; white-space:nowrap; }
+  .pill.ok, .pill.met { background:var(--ok-bg); color:var(--ok); }
+  .pill.running, .pill.in_progress { background:var(--warn-bg); color:var(--warn); }
+  .pill.failed, .pill.not_met { background:var(--bad-bg); color:var(--bad); }
+  .notice { background:var(--warn-bg); color:var(--warn); padding:8px 12px; border-radius:6px; font-size:14px; margin-top:10px; }
+  .req { padding:7px 0; border-top:1px solid var(--line); }
+  .req .top { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+  .req .name { font-weight:600; }
+  .req.child { margin-left:22px; }
+  .req.child .name { font-weight:500; }
+  .req .hours { color:var(--muted); font-size:13px; margin-left:auto; }
+  .req .opts { color:var(--muted); font-size:13px; margin-top:2px; }
+  #lab-solve input[type=text] { width:100%; min-width:0; display:block; margin-top:2px; }
+  #lab-solve label { display:block; }
+  .lab-sched { border-top:1px solid var(--line); padding:10px 0; }
+  .lab-items { margin:6px 0 0; padding-left:18px; font-size:14px; }
+  .pill.conflict { background:var(--bad-bg); color:var(--bad); }
+  .pill.warning { background:var(--warn-bg); color:var(--warn); }
+  .flow-head { display:flex; gap:12px; align-items:center; }
+  .flow-mark { width:42px; height:42px; border-radius:10px; flex:none; display:flex; align-items:center; justify-content:center;
+               background:linear-gradient(135deg,#2a3fb5,#7b5cf0); color:#fff; font-weight:700; font-size:20px; }
+  #flow-log { display:flex; flex-direction:column; gap:10px; margin:6px 0; }
+  .bubble { padding:10px 13px; border-radius:10px; max-width:88%; white-space:normal; }
+  .bubble p { margin:0 0 6px; } .bubble p:last-child { margin:0; }
+  .bubble ul { margin:4px 0 6px; padding-left:20px; }
+  .bubble.user { align-self:flex-end; background:var(--accent); color:#fff; }
+  .bubble.flow { align-self:flex-start; background:var(--card); border:1px solid var(--line); }
+  .bubble.error { color:var(--bad); }
+  .flow-starters { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:8px; }
+  .flow-starters button { text-align:left; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px;
+                          color:var(--text); font:inherit; cursor:pointer; }
+  .flow-starters button span { display:block; color:var(--muted); font-size:13px; }
+  .proposal { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:var(--card); align-self:stretch; }
+  .proposal h4 { margin:0 0 2px; font-size:15px; }
+  .week { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; margin:8px 0; font-size:12px; }
+  .week div { border:1px solid var(--line); border-radius:6px; padding:4px; min-height:40px; }
+  .week b { display:block; color:var(--muted); font-weight:600; margin-bottom:2px; }
+  .week span { display:block; background:var(--bg); border-radius:4px; padding:2px 4px; margin-bottom:3px; }
+  .pill.not_tracked { background:var(--bg); color:var(--muted); border:1px solid var(--line); }
+  .req summary { list-style:none; cursor:pointer; color:inherit; font-size:inherit; }
+  .req summary::-webkit-details-marker { display:none; }
+  .req details > .kids { margin-left:22px; }
+  .bar-track { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin:6px 0 4px; }
+  .bar-fill { height:100%; background:var(--ok); }
+  .bar-ip { height:100%; background:var(--warn); }
   * { box-sizing: border-box; }
   body { margin:0; font:15px/1.5 system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
   main { max-width:920px; margin:0 auto; padding:16px; }
@@ -53,18 +112,67 @@
 </head>
 <body>
 <main>
-  <h1>Flowsaic dev test page</h1>
-  <div class="banner">Developer test page for looking at the loaded data. This is not the Flowsaic app and not part of the contract.</div>
+  <div class="topline">
+    <h1>Flowsaic prototype</h1>
+    <span class="who" id="who"></span>
+    <button class="ghost" id="logout">Sign out</button>
+  </div>
+  <div class="banner">Prototype test page for trying the backend before the real front end is wired up. Not part of the contract.</div>
   <div class="stats" id="stats">Loading counts…</div>
 
   <div class="tabs">
-    <button data-tab="search" class="active">Search</button>
+    <button data-tab="profile" class="active">My profile</button>
+    <button data-tab="advisor">AI Advisor</button>
+    <button data-tab="lab">Schedule lab</button>
+    <button data-tab="search">Search</button>
     <button data-tab="browse">Browse</button>
-    <button data-tab="chat">Chat</button>
     <button data-tab="database">Database</button>
   </div>
 
-  <section id="tab-search">
+  <section id="tab-profile">
+    <div class="card" id="profile"><p class="note">Loading…</p></div>
+    <div class="card" id="connect" hidden></div>
+    <div class="card" id="progress" hidden></div>
+    <div class="card" id="cantake" hidden></div>
+    <div class="card" id="saved" hidden></div>
+    <div class="card" id="courses" hidden></div>
+  </section>
+
+  <section id="tab-lab" class="hidden">
+    <p class="note">Try the schedule checker and the solver as the signed-in student. This is the same code that will check every schedule Flow suggests. Test page only.</p>
+    <div class="card">
+      <h2 style="font-size:16px;margin:0 0 6px">Check a schedule</h2>
+      <p class="note">One section per line, like <code>CSCI 4203-001</code>. Try:
+        <button class="ghost" type="button" data-example="CSCI 4203-001&#10;MATH 3043-002">an overlap</button>
+        <button class="ghost" type="button" data-example="CSCI 4932-001&#10;CSCI 3103-001&#10;MATH 3043-001">prereq, done, full</button>
+        <button class="ghost" type="button" data-example="MGMT 2003-001&#10;ACCT 2003-001&#10;ECON 2103-001&#10;CSCI 2103-001">Jordan's</button>
+      </p>
+      <textarea id="lab-sections" rows="5" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;font:inherit;background:var(--card);color:var(--text)"></textarea>
+      <div style="margin-top:8px"><button class="go" id="lab-check">Check</button></div>
+      <div id="lab-check-result"></div>
+    </div>
+    <div class="card">
+      <h2 style="font-size:16px;margin:0 0 6px">Find schedules</h2>
+      <p class="note">Courses as codes separated by commas. "Must" are always in; "Optional" are added best first until the credits fit.</p>
+      <form id="lab-solve" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;align-items:end">
+        <label>Must take<input type="text" name="must" placeholder="CSCI 3143, CSCI 4203, MATH 2753"></label>
+        <label>Optional, best first<input type="text" name="optional" placeholder="CSCI 4133, CSCI 4153, ENGL 3023"></label>
+        <label>Can't do (one per line)<textarea name="unavailable" rows="2" placeholder="MWF 13:00-17:00" style="width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;font:inherit;background:var(--card);color:var(--text)"></textarea></label>
+        <label>Days off<input type="text" name="days_off" placeholder="F" maxlength="7"></label>
+        <label>Earliest start<input type="text" name="earliest_start" placeholder="10:00" maxlength="5"></label>
+        <label>Latest end<input type="text" name="latest_end" placeholder="17:00" maxlength="5"></label>
+        <label>Credits from<input type="text" name="min_credits" placeholder="12" maxlength="4"></label>
+        <label>Credits up to<input type="text" name="max_credits" placeholder="18" maxlength="4"></label>
+        <label>Preferred time<select name="preferred_time" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--text)"><option value="">Any</option><option>morning</option><option>afternoon</option><option>evening</option></select></label>
+        <label><input type="checkbox" name="open_seats_only"> Open seats only</label>
+        <label><input type="checkbox" name="no_online"> No online sections</label>
+        <button class="go" type="submit">Find schedules</button>
+      </form>
+      <div id="lab-solve-result"></div>
+    </div>
+  </section>
+
+  <section id="tab-search" class="hidden">
     <p class="note">Search course descriptions by meaning (Gemini embeddings + pgvector). Smaller distance = closer match.</p>
     <form id="search-form">
       <input type="text" id="search-q" placeholder='Try "intro to programming" or "working with animals"' maxlength="300" required>
@@ -83,14 +191,33 @@
     <div id="browse-results"></div>
   </section>
 
-  <section id="tab-chat" class="hidden">
-    <p class="note">Ask Gemini about courses. Each question finds the 8 most relevant courses and gives Gemini only those, so it can't see the whole catalog, your schedule or any student data.</p>
-    <div id="chat-log"></div>
-    <form id="chat-form">
-      <input type="text" id="chat-q" placeholder='Try "what should I take if I like animals?"' maxlength="1000" required>
-      <button class="go" type="submit">Send</button>
-      <button class="go" type="button" id="chat-clear" style="background:var(--muted)">Clear</button>
+  <section id="tab-advisor" class="hidden">
+    <div class="card flow-head">
+      <span class="flow-mark" aria-hidden="true">F</span>
+      <div>
+        <h2 style="font-size:17px;margin:0">Flow</h2>
+        <div class="note">Your AI academic advisor. Uses your degree progress, this term's sections and the official schedule checker.</div>
+      </div>
+      <button class="ghost" type="button" id="flow-new" style="margin-left:auto">New chat</button>
+    </div>
+    <div class="card" id="flow-connect" hidden>
+      <h2 style="font-size:16px;margin:0 0 4px">Connect mySAU first</h2>
+      <p class="note" style="margin:0 0 8px">Flow works from your own degree audit. Connecting opens a Chromium window on this computer; you sign in there yourself (Microsoft and Duo), and Flowsaic loads your audit and this term's course schedule. Flowsaic never sees your password.</p>
+      <button class="go" type="button" id="flow-connect-button">Connect mySAU</button>
+      <span class="note" style="margin-left:8px">Progress shows on My profile.</span>
+    </div>
+    <div id="flow-log"></div>
+    <div class="flow-starters" id="flow-starters">
+      <button type="button" data-prompt="How am I doing on my degree? What's left?"><b>Review my degree</b><span>Check progress and requirements</span></button>
+      <button type="button" data-prompt="What should I take next semester?"><b>Plan next semester</b><span>Courses that move you forward</span></button>
+      <button type="button" data-prompt="Build me a schedule for next semester."><b>Build my schedule</b><span>Fit classes around your life</span></button>
+      <button type="button" data-prompt="Help me find electives that match my interests."><b>Explore courses</b><span>Electives and options</span></button>
+    </div>
+    <form id="flow-form" style="margin-top:10px">
+      <input type="text" id="flow-q" placeholder="Ask Flow about your academic plan…" maxlength="2000" autocomplete="off" required>
+      <button class="go" type="submit" id="flow-send">Send</button>
     </form>
+    <p class="note">Flow is an AI assistant. Confirm important academic decisions and graduation requirements with your SAU advisor.</p>
   </section>
 
   <section id="tab-database" class="hidden">
@@ -185,12 +312,17 @@ async function run(form, target, work) {
   finally { button.disabled = false; }
 }
 
-// Tabs
-document.querySelectorAll(".tabs button").forEach(button => button.addEventListener("click", () => {
+// Tabs (the open tab is remembered for this browser tab)
+const TAB_KEY = "flowsaic.devTab";
+function openTab(name) {
+  const button = document.querySelector('.tabs button[data-tab="' + name + '"]');
+  if (!button) return;
   document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b === button));
-  ["search", "browse", "chat", "database"].forEach(name => document.getElementById("tab-" + name).classList.toggle("hidden", name !== button.dataset.tab));
-  if (button.dataset.tab === "database") loadTables();
-}));
+  ["profile", "advisor", "lab", "search", "browse", "database"].forEach(tab => document.getElementById("tab-" + tab).classList.toggle("hidden", tab !== name));
+  if (name === "database") loadTables();
+  try { sessionStorage.setItem(TAB_KEY, name); } catch (e) {}
+}
+document.querySelectorAll(".tabs button").forEach(button => button.addEventListener("click", () => openTab(button.dataset.tab)));
 
 // Database
 const dbTables = document.getElementById("db-tables");
@@ -277,36 +409,581 @@ document.getElementById("browse-form").addEventListener("submit", event => {
   });
 });
 
-// Chat
-const chatLog = document.getElementById("chat-log");
-let history = [];
-function addMessage(role, text) {
-  const node = el("div", "msg " + role, text);
-  chatLog.append(node);
-  node.scrollIntoView({ block: "nearest" });
-  return node;
-}
-document.getElementById("chat-clear").addEventListener("click", () => { history = []; chatLog.replaceChildren(); });
-document.getElementById("chat-form").addEventListener("submit", event => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const input = document.getElementById("chat-q");
-  const message = input.value.trim();
-  if (!message) return;
-  addMessage("user", message);
-  input.value = "";
-  const pending = addMessage("assistant", "Thinking…");
-  run(form, null, async () => {
-    const data = await api("/dev/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, history }) });
-    pending.textContent = data.answer;
-    const details = el("details");
-    details.append(el("summary", null, "Courses given to Gemini for this answer (" + data.courses_given_to_ai.length + ", model " + data.model + ")"));
-    data.courses_given_to_ai.forEach(c => details.append(el("div", "note", c.code + "  " + c.title + "  (distance " + c.distance.toFixed(4) + ")")));
-    pending.append(details);
-    history.push({ role: "user", text: message }, { role: "assistant", text: data.answer });
-    history = history.slice(-20);
-  }).catch(err => { pending.textContent = err.message; pending.classList.add("error"); });
-});
+// Open the tab this browser tab was on last (My profile by default).
+try { openTab(sessionStorage.getItem(TAB_KEY) || "profile"); } catch (e) { openTab("profile"); }
+</script>
+
+<script>
+// Shared by My profile and AI Advisor: building DOM safely and showing a schedule.
+window.flowsaicUI = (() => {
+  function h(tag, attrs = {}, ...children) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs)) {
+      if (key === "class") node.className = value; else if (key === "text") node.textContent = value; else node.setAttribute(key, value);
+    }
+    for (const child of children) if (child != null) node.append(child);
+    return node;
+  }
+  const meets = s => s.days && s.start_time ? s.days + " " + s.start_time + "–" + s.end_time : "Online / TBA";
+  function weekGrid(sections) {
+    const days = [["M", "Mon"], ["T", "Tue"], ["W", "Wed"], ["R", "Thu"], ["F", "Fri"]];
+    const grid = h("div", { class: "week" }, ...days.map(([letter, label]) => {
+      const today = sections.filter(s => s.days && s.start_time && s.days.includes(letter))
+        .sort((a, b) => a.start_time.localeCompare(b.start_time));
+      return h("div", {}, h("b", { text: label }), ...today.map(s => h("span", { text: s.start_time + " " + s.code })));
+    }));
+    const online = sections.filter(s => !(s.days && s.start_time));
+    return online.length ? h("div", {}, grid, h("div", { class: "note", text: "Online / TBA: " + online.map(s => s.code).join(", ") })) : grid;
+  }
+  function sectionTable(sections) {
+    return h("div", { class: "table-wrap" }, h("table", {},
+      h("thead", {}, h("tr", {}, ...["Section", "Title", "Meets", "Instructor", "Credits", "Seats open"].map(t => h("th", { text: t })))),
+      h("tbody", {}, ...sections.map(s => h("tr", {},
+        h("td", { text: s.code + "-" + s.section_number + (s.active === false ? " (no longer offered)" : "") }),
+        h("td", { text: s.title || "" }), h("td", { text: meets(s) }), h("td", { text: s.instructor }),
+        h("td", { text: String(s.credits) }), h("td", { text: s.seats_open + " of " + s.capacity }),
+      ))),
+    ));
+  }
+  function findings(result) {
+    const items = [...(result.conflicts || []).map(i => ["conflict", i]), ...(result.warnings || []).map(i => ["warning", i])];
+    if (!items.length) return h("p", { class: "note", text: "Checked: no conflicts or warnings." });
+    return h("ul", { class: "lab-items" }, ...items.map(([kind, i]) =>
+      h("li", {}, h("span", { class: "pill " + kind, text: kind === "conflict" ? "Conflict" : "Warning" }), " " + i.message)));
+  }
+  return { h, weekGrid, sectionTable, findings };
+})();
+</script>
+
+<script>
+// My profile tab: the signed-in student (GET /me, /me/completed-courses, /me/audit) and,
+// for a student without a demo plan, Connect mySAU (POST /me/connect-mysau, then poll
+// GET /data/refresh/{id}). Wrapped in a function so its names don't clash with the code above.
+(() => {
+  const LABELS = { sections: "Course schedule (this term's sections)", audit: "Your degree audit" };
+  const STATUS_TEXT = { met: "Met", not_met: "Not met", in_progress: "In progress", ok: "Done", running: "Running", failed: "Failed" };
+  const RUNS_KEY = "flowsaic.connectRuns";
+  let me = null;
+
+  function h(tag, attrs = {}, ...children) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs)) {
+      if (key === "class") node.className = value; else if (key === "text") node.textContent = value; else node.setAttribute(key, value);
+    }
+    for (const child of children) if (child != null) node.append(child);
+    return node;
+  }
+  const pill = status => h("span", { class: "pill " + status, text: STATUS_TEXT[status] || status });
+  const hours = value => value == null ? "–" : (Number.isInteger(value) ? String(value) : value.toFixed(1));
+  const stat = (label, value) => h("div", { class: "stat" }, h("small", { text: label }), h("strong", { text: value ?? "–" }));
+
+  async function call(path, options = {}) {
+    const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
+    if (response.status === 401) { location.href = "/"; throw new Error("not signed in"); }
+    return response;
+  }
+
+  // Demo students (users 1-3) have a public degree plan and no audit. Connecting mySAU as one
+  // of them would mix a real audit into a fake student, so they don't get the button.
+  const isDemoStudent = () => me.degree_plan && !me.connected_mysau;
+
+  const earnedFromCourses = courses => courses
+    .filter(c => c.status === "completed" && !["F", "W"].includes(c.grade))
+    .reduce((sum, c) => sum + (c.credits || 0), 0);
+
+  function renderProfile(courses) {
+    document.getElementById("who").textContent = "Signed in as " + me.name;
+    const earned = me.total_hours_earned != null
+      ? hours(me.total_hours_earned) + (me.total_hours_needed != null ? " of " + hours(me.total_hours_needed) : "")
+      : (courses.length ? hours(earnedFromCourses(courses)) : null);
+    const stats = [
+      stat("Classification", me.classification),
+      stat("Major", me.major),
+      stat("Catalog year", me.catalog_year),
+      stat("Degree plan", me.degree_plan ? me.degree_plan.name : (me.connected_mysau ? "Your mySAU audit" : null)),
+      stat("Hours earned", earned),
+    ];
+    if (me.connected_mysau) stats.push(stat("Hold", me.has_hold ? "Yes, check mySAU" : "No"));
+    document.getElementById("profile").replaceChildren(h("h2", { text: me.name }), h("div", { class: "grid" }, ...stats));
+  }
+
+  function renderConnect(runs) {
+    const box = document.getElementById("connect");
+    box.hidden = false;
+    if (isDemoStudent()) {
+      box.replaceChildren(
+        h("h2", { text: "Demo student" }),
+        h("p", { class: "note", text: "A sample account on the public " + me.degree_plan.name + " degree map. Sign in as user 4 to try Connect mySAU with your own account." }),
+      );
+      return;
+    }
+    const running = runs && runs.some(run => run.status === "running");
+    const button = h("button", { class: "go", id: "connect-button" }, me.connected_mysau ? "Refresh from mySAU" : "Connect mySAU");
+    button.disabled = !!running;
+    button.addEventListener("click", startConnect);
+    const children = [
+      h("h2", { text: me.connected_mysau ? "mySAU" : "Get started" }),
+      me.connected_mysau
+        ? h("p", { class: "note", text: "Last refreshed " + new Date(me.audit_refreshed_at).toLocaleString() + ". Refresh to pull your latest audit and this term's sections." })
+        : h("p", { text: "Welcome! Your Flowsaic account is empty. Connect mySAU to load your degree audit and this term's course schedule." }),
+    ];
+    if (!me.connected_mysau) {
+      children.push(h("ol", { class: "steps" },
+        h("li", { text: "A Chromium window opens on this computer." }),
+        h("li", { text: "Sign in there yourself with your SAU Microsoft account and Duo. Flowsaic never sees your password." }),
+        h("li", { text: "Flowsaic downloads the course schedule and your degree audit, then closes the window." }),
+      ));
+    }
+    children.push(button);
+    if (running) children.push(h("div", { class: "notice", text: "Sign in in the Chromium window that opened. Keep this tab open; it updates by itself." }));
+    if (runs && runs.length) {
+      children.push(h("ul", { class: "runs" }, ...runs.map(run => h("li", {},
+        h("span", { text: LABELS[run.kind] || run.kind }),
+        pill(run.status),
+        h("span", { class: "note", text: run.status === "ok" && run.rows_changed != null ? run.rows_changed + " rows saved" : (run.error || "") }),
+      ))));
+    }
+    box.replaceChildren(...children);
+  }
+
+  STATUS_TEXT.not_tracked = "Not tracked";
+  const listCodes = (codes, max = 16) => codes.slice(0, max).join(", ") + (codes.length > max ? ", … (" + codes.length + ")" : "");
+
+  // One requirement group: status, hours, what's still needed. Groups that aren't met start open.
+  function requirementNode(node) {
+    const hoursText = node.hours_required == null && !node.hours_done && !node.hours_in_progress ? ""
+      : hours(node.hours_done) + (node.hours_in_progress ? " (+" + hours(node.hours_in_progress) + " in progress)" : "")
+        + (node.hours_required != null ? " / " + hours(node.hours_required) : "") + " hours";
+    const summary = h("summary", {}, h("div", { class: "top" },
+      h("span", { class: "name", text: node.name }), pill(node.status), h("span", { class: "hours", text: hoursText })));
+    const body = h("div", { class: "kids" });
+    const needed = node.courses.filter(c => c.status === "needed").map(c => c.code);
+    const options = node.courses.filter(c => c.status === "option").map(c => c.code);
+    if (needed.length) body.append(h("div", { class: "opts", text: "Still needed: " + listCodes(needed) }));
+    if (node.status !== "met" && node.rule === "choose_hours" && options.length) body.append(h("div", { class: "opts", text: "Choose from: " + listCodes(options) }));
+    for (const e of node.electives) {
+      const via = e.courses.map(c => c.code);
+      body.append(h("div", { class: "opts" }, pill(e.status), " " + e.text
+        + (e.hours_required != null ? " — " + hours(e.hours_done) + (e.hours_in_progress ? " (+" + hours(e.hours_in_progress) + ")" : "") + " / " + hours(e.hours_required) : "")
+        + (via.length ? " (" + listCodes(via, 8) + ")" : "")));
+    }
+    if (node.note && !node.electives.length && node.status !== "met") body.append(h("div", { class: "opts", text: node.note.slice(0, 300) }));
+    for (const child of node.children) body.append(requirementNode(child));
+    const details = h("details", {}, summary, body);
+    if (node.status !== "met") details.open = true;
+    return h("div", { class: "req" }, details);
+  }
+
+  function renderProgress(progress) {
+    const box = document.getElementById("progress");
+    if (progress.source === "none") { box.hidden = true; return; }
+    box.hidden = false;
+    const required = progress.hours.required || 0;
+    const pct = v => required ? Math.min(100, 100 * v / required) + "%" : "0%";
+    const fill = h("div", { class: "bar-fill" }); fill.style.width = pct(progress.hours.earned);
+    const ip = h("div", { class: "bar-ip" }); ip.style.width = pct(progress.hours.in_progress);
+    const track = h("div", { class: "bar-track" }); track.style.display = "flex"; track.append(fill, ip);
+    box.replaceChildren(
+      h("h2", { text: "Degree progress" }),
+      h("p", { class: "note", text: (progress.source === "audit"
+        ? "From your mySAU degree audit."
+        : "From the public " + progress.plan.name + " degree map (" + progress.plan.catalog_year + ").")
+        + " " + hours(progress.hours.earned) + " hours earned, " + hours(progress.hours.in_progress) + " in progress"
+        + (required ? ", " + hours(required) + " required." : ".") }),
+      track,
+      ...progress.requirements.map(requirementNode),
+    );
+  }
+
+  function renderCanTake(progress) {
+    const box = document.getElementById("cantake");
+    if (progress.source === "none" || !progress.term) { box.hidden = true; return; }
+    box.hidden = false;
+    const groups = [["required", "Required courses"], ["choice", "Choices (pick from a list)"], ["elective", "Electives that count"]];
+    const children = [
+      h("h2", { text: "You can take in " + progress.term.name }),
+      h("p", { class: "note", text: "Offered this term, not taken yet, prereqs met (passed or in progress). This is the list Flow will work from." }),
+    ];
+    for (const [kind, label] of groups) {
+      const rows = progress.can_take.filter(c => c.kind === kind);
+      if (!rows.length) continue;
+      children.push(h("h3", { text: label + " (" + rows.length + ")" }), h("div", { class: "table-wrap" }, h("table", {},
+        h("thead", {}, h("tr", {}, ...["Course", "Title", "Credits", "Counts toward", "Sections", "Open seats"].map(t => h("th", { text: t })))),
+        h("tbody", {}, ...rows.map(c => h("tr", {},
+          h("td", { text: c.code }), h("td", { text: c.title || "" }), h("td", { text: hours(c.credits) }),
+          h("td", { text: c.counts_toward.join("; ").slice(0, 80) }), h("td", { text: String(c.sections) }),
+          h("td", { text: String(c.seats_open) }),
+        ))),
+      )));
+    }
+    if (progress.open_electives.length) children.push(h("p", { class: "note", text: "Also open: " + progress.open_electives.join("; ") + " (any course counts)." }));
+    if (progress.blocked.length) {
+      children.push(h("h3", { text: "Needed but blocked by a prereq (" + progress.blocked.length + ")" }));
+      children.push(h("div", { class: "opts", text: progress.blocked.map(b => b.code + " needs " + b.missing_prereqs.map(g => g.join(" or ")).join(" and ")).join(" · ") }));
+    }
+    box.replaceChildren(...children);
+  }
+
+  // "Spring 2025" -> 20251, "Summer 2025" -> 20252, "Fall 2025" -> 20253; anything else by its year.
+  function termOrder(term) {
+    const match = /(Spring|Summer|Fall)\D*(\d{4})/i.exec(term || "");
+    if (match) return Number(match[2]) * 10 + { spring: 1, summer: 2, fall: 3 }[match[1].toLowerCase()];
+    const year = /(\d{4})/.exec(term || "");
+    return year ? Number(year[1]) * 10 : 0;
+  }
+  const byTerm = (a, b) => termOrder(a.term) - termOrder(b.term) || (a.term || "").localeCompare(b.term || "") || a.course_code.localeCompare(b.course_code);
+
+  function courseTable(rows, withGrade) {
+    return h("div", { class: "table-wrap" }, h("table", {},
+      h("thead", {}, h("tr", {}, ...["Course", "Title", "Term", ...(withGrade ? ["Grade"] : []), "Credits"].map(t => h("th", { text: t })))),
+      h("tbody", {}, ...rows.map(c => h("tr", {},
+        h("td", { text: c.course_code }),
+        h("td", { text: c.title || "" }),
+        h("td", { text: c.term || "" }),
+        ...(withGrade ? [h("td", { text: c.grade || "" })] : []),
+        h("td", { text: hours(c.credits) }),
+      ))),
+    ));
+  }
+
+  function renderCourses(courses) {
+    const box = document.getElementById("courses");
+    if (!courses.length) { box.hidden = true; return; }
+    box.hidden = false;
+    const inProgress = courses.filter(c => c.status === "in_progress").sort(byTerm);
+    const completed = courses.filter(c => c.status === "completed").sort(byTerm);
+    box.replaceChildren(
+      h("h2", { text: "My courses" }),
+      h("h3", { text: "In progress (" + inProgress.length + ")" }), courseTable(inProgress, false),
+      h("h3", { text: "Completed (" + completed.length + ")" }), courseTable(completed, true),
+    );
+  }
+
+  // Saved schedules (GET/DELETE /schedules). Flow's Save button fires "flowsaic:schedules-changed".
+  async function loadSaved() {
+    const box = document.getElementById("saved");
+    const list = await call("/schedules").then(r => r.json());
+    if (!list.length) { box.hidden = true; return; }
+    box.hidden = false;
+    const ui = window.flowsaicUI;
+    box.replaceChildren(h("h2", { text: "Saved schedules (" + list.length + ")" }), ...list.map(s => {
+      const detail = h("div");
+      const view = h("button", { class: "ghost", type: "button" }, "View");
+      const remove = h("button", { class: "ghost", type: "button" }, "Delete");
+      view.addEventListener("click", async () => {
+        if (detail.childElementCount) { detail.replaceChildren(); return; }
+        const full = await call("/schedules/" + s.id).then(r => r.json());
+        detail.replaceChildren(ui.weekGrid(full.sections), ui.findings(full), ui.sectionTable(full.sections));
+      });
+      remove.addEventListener("click", async () => {
+        if (!confirm("Delete the saved schedule \"" + s.name + "\"?")) return;
+        await call("/schedules/" + s.id, { method: "DELETE" });
+        loadSaved();
+      });
+      return h("div", { class: "req" },
+        h("div", { class: "top" }, h("span", { class: "name", text: s.name }),
+          h("span", { class: "pill " + (s.source === "ai" ? "in_progress" : "met"), text: s.source === "ai" ? "From Flow" : "Manual" }),
+          h("span", { class: "hours", text: s.term.name + " · " + hours(s.credits) + " credits · " + s.section_count + " sections" })),
+        h("div", { style: "display:flex;gap:6px;margin-top:4px" }, view, remove), detail);
+    }));
+  }
+  window.addEventListener("flowsaic:schedules-changed", () => loadSaved().catch(() => {}));
+
+  async function loadAll() {
+    me = await (await call("/me")).json();
+    window.flowsaicMe = me;
+    window.dispatchEvent(new Event("flowsaic:me"));
+    loadSaved().catch(() => {});
+    const [courses, progress] = await Promise.all([
+      call("/me/completed-courses").then(r => r.json()),
+      call("/me/progress").then(r => r.json()),
+    ]);
+    renderProfile(courses);
+    renderConnect(null);
+    renderProgress(progress);
+    renderCanTake(progress);
+    renderCourses(courses);
+  }
+
+  function saveRuns(runs) { try { sessionStorage.setItem(RUNS_KEY, JSON.stringify(runs)); } catch (e) {} }
+  function savedRuns() { try { return JSON.parse(sessionStorage.getItem(RUNS_KEY) || "null"); } catch (e) { return null; } }
+
+  async function poll(started) {
+    saveRuns(started);
+    for (;;) {
+      const runs = await Promise.all(started.map(run =>
+        call("/data/refresh/" + run.id).then(r => r.ok ? r.json() : { ...run, status: "failed", error: "run not found" })));
+      renderConnect(runs);
+      if (runs.every(run => run.status !== "running")) {
+        saveRuns(null);
+        await loadAll();
+        renderConnect(runs);
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }
+
+  window.flowsaicConnect = () => startConnect();
+  async function startConnect() {
+    const button = document.getElementById("connect-button");
+    if (button) button.disabled = true;
+    const response = await call("/me/connect-mysau", { method: "POST", body: JSON.stringify({ fetch: ["sections", "audit"] }) });
+    const body = await response.json();
+    if (!response.ok) {
+      renderConnect(null);
+      document.getElementById("connect").append(h("div", { class: "notice", text: response.status === 409
+        ? "A mySAU connect is already running on this computer. Finish or close that window first."
+        : "Couldn't start the connect (" + (body.error || response.status) + ")." }));
+      return;
+    }
+    poll(body.runs.map(run => ({ ...run, status: "running" })));
+  }
+
+  document.getElementById("logout").addEventListener("click", async () => {
+    await fetch("/auth/logout", { method: "POST" });
+    saveRuns(null);
+    location.href = "/";
+  });
+
+  // Signed out? Back to the sign-in page (call() redirects on 401).
+  loadAll().then(() => { const runs = savedRuns(); if (runs) poll(runs); }).catch(() => {});
+})();
+</script>
+
+<script>
+// AI Advisor tab: Flow (POST /ai/advisor). The conversation lives in this page; each Flow turn
+// goes back as `memory` (it keeps {first_name}, so the name never reaches Gemini).
+(() => {
+  const { h, weekGrid, sectionTable, findings } = window.flowsaicUI;
+  const log = document.getElementById("flow-log");
+  const form = document.getElementById("flow-form");
+  const input = document.getElementById("flow-q");
+  const send = document.getElementById("flow-send");
+  const starters = document.getElementById("flow-starters");
+  const ERR = {
+    gemini_model_not_set: "Flow isn't set up: GEMINI_MODEL is missing in backend/.env.",
+    ai_unavailable: "Flow couldn't reach Gemini right now. Check the key, the model name and the daily limit, then try again.",
+    invalid_request: "That message is empty or too long.",
+  };
+  let history = [];
+  let busy = false;
+
+  // Plain text with "- " bullets and **bold**, built as DOM (never innerHTML).
+  function formatted(text) {
+    const box = h("div");
+    let list = null;
+    for (const raw of text.split("\n")) {
+      const line = raw.trimEnd();
+      const bullet = /^\s*(?:[-*•]|\d+\.)\s+(.*)$/.exec(line);
+      if (bullet) {
+        if (!list) { list = h("ul"); box.append(list); }
+        list.append(inline(h("li"), bullet[1]));
+      } else if (line.trim()) {
+        list = null;
+        box.append(inline(h("p"), line));
+      } else {
+        list = null;
+      }
+    }
+    return box;
+  }
+  function inline(node, text) {
+    text.split(/(\*\*[^*]+\*\*)/).forEach(part => {
+      if (part.startsWith("**") && part.endsWith("**")) node.append(h("strong", { text: part.slice(2, -2) }));
+      else if (part) node.append(part);
+    });
+    return node;
+  }
+  function bubble(kind, content) {
+    const node = h("div", { class: "bubble " + kind });
+    node.append(typeof content === "string" ? content : content);
+    log.append(node);
+    node.scrollIntoView({ block: "nearest" });
+    return node;
+  }
+
+  function proposalCard(p) {
+    const save = h("button", { class: "go", type: "button" }, "Save schedule");
+    const status = h("span", { class: "note", style: "margin-left:8px" });
+    if (p.conflicts.length) {
+      save.disabled = true;
+      status.textContent = "Can't save: fix the conflicts first (ask Flow).";
+    }
+    save.addEventListener("click", async () => {
+      save.disabled = true;
+      status.textContent = "Saving…";
+      try {
+        const response = await fetch("/schedules", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: p.name.slice(0, 80), term_id: p.term_id, section_ids: p.section_ids, source: "ai" }) });
+        if (response.status === 401) { location.href = "/"; return; }
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error === "schedule_has_conflicts" ? "It has conflicts now: " + body.conflicts.map(c => c.message).join("; ") : (body.error || response.status));
+        status.textContent = "Saved. It's under Saved schedules on My profile.";
+        window.dispatchEvent(new Event("flowsaic:schedules-changed"));
+      } catch (error) {
+        status.textContent = "Couldn't save: " + error.message;
+        save.disabled = false;
+      }
+    });
+    return h("div", { class: "proposal" },
+      h("h4", { text: p.name }),
+      h("div", { class: "note", text: p.credits + " credits" + (p.explanation ? " · " + p.explanation : "") }),
+      weekGrid(p.sections), findings(p), sectionTable(p.sections),
+      h("div", { style: "margin-top:8px" }, save, status));
+  }
+
+  // Not connected and no demo plan (user 4): offer Connect mySAU right here. It runs the
+  // same connect as My profile and switches there so the progress is visible.
+  document.getElementById("flow-connect-button").addEventListener("click", () => {
+    openTab("profile");
+    if (window.flowsaicConnect) window.flowsaicConnect();
+  });
+
+  function greet() {
+    const me = window.flowsaicMe;
+    document.getElementById("flow-connect").hidden = !(me && !me.degree_plan && !me.connected_mysau);
+    const first = me && me.email !== "new.student@demo.flowsaic.test" ? me.name.split(" ")[0] : "there";
+    log.replaceChildren();
+    bubble("flow", formatted("Hi " + first + "! I'm Flow. I can review your degree progress, help you choose courses and electives, and build a schedule around your commitments. What would you like to work on?"));
+  }
+
+  async function ask(message) {
+    if (busy || !message.trim()) return;
+    busy = true; send.disabled = true; starters.hidden = true;
+    bubble("user", message);
+    const pending = bubble("flow", "Thinking…");
+    try {
+      const response = await fetch("/ai/advisor", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, history: history.slice(-20) }) });
+      if (response.status === 401) { location.href = "/"; return; }
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(ERR[body.error] || body.error || "Request failed (" + response.status + ")");
+      pending.replaceChildren(formatted(body.reply));
+      for (const p of body.proposals) log.append(proposalCard(p));
+      if (body.proposals.length) log.lastElementChild.scrollIntoView({ block: "nearest" });
+      history.push({ role: "user", text: message }, { role: "assistant", text: body.memory });
+    } catch (error) {
+      pending.classList.add("error");
+      pending.textContent = error.message;
+    } finally {
+      busy = false; send.disabled = false; input.focus();
+    }
+  }
+
+  form.addEventListener("submit", event => { event.preventDefault(); const m = input.value; input.value = ""; ask(m); });
+  starters.querySelectorAll("button").forEach(b => b.addEventListener("click", () => ask(b.dataset.prompt)));
+  document.getElementById("flow-new").addEventListener("click", () => { history = []; starters.hidden = false; greet(); });
+  window.addEventListener("flowsaic:me", greet);
+  if (window.flowsaicMe) greet();
+})();
+</script>
+
+<script>
+// Schedule lab tab: the checker (POST /schedules/check) and the solver (POST /dev/lab/solve).
+(() => {
+  function h(tag, attrs = {}, ...children) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs)) {
+      if (key === "class") node.className = value; else if (key === "text") node.textContent = value; else node.setAttribute(key, value);
+    }
+    for (const child of children) if (child != null) node.append(child);
+    return node;
+  }
+  const ERR = {
+    section_not_found: "One of those sections isn't offered this term.",
+    invalid_course_code: "A course code wasn't understood. Use codes like CSCI 4203.",
+    invalid_request: "Something in the form wasn't understood (times are HH:MM, days are letters like MWF).",
+    no_courses: "Add at least one course.",
+  };
+  async function call(path, options = {}) {
+    const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
+    if (response.status === 401) { location.href = "/"; throw new Error("not signed in"); }
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(ERR[body.error] || body.error || "Request failed (" + response.status + ")");
+    return body;
+  }
+  const meeting = s => s.days && s.start_time ? s.days + " " + s.start_time + "–" + s.end_time : "Online / TBA";
+
+  function sectionTable(sections) {
+    return h("div", { class: "table-wrap" }, h("table", {},
+      h("thead", {}, h("tr", {}, ...["Section", "Title", "Meets", "Instructor", "Credits", "Seats"].map(t => h("th", { text: t })))),
+      h("tbody", {}, ...sections.map(s => h("tr", {},
+        h("td", { text: s.code + "-" + s.section_number }), h("td", { text: s.title || "" }), h("td", { text: meeting(s) }),
+        h("td", { text: s.instructor }), h("td", { text: String(s.credits) }),
+        h("td", { text: s.seats_open + " open (" + s.enrolled + "/" + s.capacity + ")" }),
+      ))),
+    ));
+  }
+  function findings(result) {
+    const items = [...result.conflicts.map(i => ["conflict", i]), ...result.warnings.map(i => ["warning", i])];
+    if (!items.length) return h("p", { class: "note", text: "No conflicts or warnings." });
+    return h("ul", { class: "lab-items" }, ...items.map(([kind, i]) =>
+      h("li", {}, h("span", { class: "pill " + kind, text: kind === "conflict" ? "Conflict" : "Warning" }), " " + i.message + " ",
+        h("span", { class: "note", text: "(" + i.code + ")" }))));
+  }
+
+  document.querySelectorAll("[data-example]").forEach(b => b.addEventListener("click", () => {
+    document.getElementById("lab-sections").value = b.dataset.example;
+  }));
+
+  document.getElementById("lab-check").addEventListener("click", async () => {
+    const out = document.getElementById("lab-check-result");
+    out.replaceChildren(h("p", { class: "note", text: "Checking…" }));
+    try {
+      const wanted = document.getElementById("lab-sections").value.split("\n").map(l => l.trim().toUpperCase()).filter(Boolean)
+        .map(l => { const m = /^(.+?)\s*-\s*(\d{3}[A-Z]?)$/.exec(l); if (!m) throw new Error("Write each line like CSCI 4203-001: " + l); return [m[1].replace(/\s+/g, " ").trim(), m[2]]; });
+      if (!wanted.length) throw new Error("Add at least one section.");
+      const codes = [...new Set(wanted.map(w => w[0]))];
+      const found = await call("/dev/lab/sections?codes=" + encodeURIComponent(codes.join(",")));
+      const sections = wanted.map(([code, number]) => {
+        const course = found.courses.find(c => c.code === code);
+        const section = course && course.sections.find(s => s.section_number === number);
+        if (!section) throw new Error(code + "-" + number + " isn't offered this term" + (course && course.sections.length ? " (sections: " + course.sections.map(s => s.section_number).join(", ") + ")" : "") + ".");
+        return section;
+      });
+      const result = await call("/schedules/check", { method: "POST", body: JSON.stringify({ term_id: found.term_id, section_ids: sections.map(s => s.id) }) });
+      out.replaceChildren(findings(result), sectionTable(sections));
+    } catch (error) {
+      out.replaceChildren(h("p", { class: "error", text: error.message }));
+    }
+  });
+
+  document.getElementById("lab-solve").addEventListener("submit", async event => {
+    event.preventDefault();
+    const form = event.target;
+    const out = document.getElementById("lab-solve-result");
+    const list = value => value.split(",").map(v => v.trim()).filter(Boolean);
+    const number = value => value.trim() ? Number(value) : null;
+    out.replaceChildren(h("p", { class: "note", text: "Searching…" }));
+    try {
+      const unavailable = form.unavailable.value.split("\n").map(l => l.trim()).filter(Boolean).map(l => {
+        const m = /^([MTWRFSU]+)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/i.exec(l);
+        if (!m) throw new Error("Write unavailable times like MWF 13:00-17:00: " + l);
+        const pad = t => t.padStart(5, "0");
+        return { days: m[1].toUpperCase(), start: pad(m[2]), end: pad(m[3]) };
+      });
+      const body = {
+        must: list(form.must.value), optional: list(form.optional.value), unavailable,
+        days_off: form.days_off.value.trim().toUpperCase(),
+        earliest_start: form.earliest_start.value.trim() || null, latest_end: form.latest_end.value.trim() || null,
+        min_credits: number(form.min_credits.value), max_credits: number(form.max_credits.value) ?? 18,
+        preferred_time: form.preferred_time.value || null,
+        open_seats_only: form.open_seats_only.checked, allow_online: !form.no_online.checked,
+      };
+      const result = await call("/dev/lab/solve", { method: "POST", body: JSON.stringify(body) });
+      const parts = [];
+      for (const u of result.unschedulable) parts.push(h("p", { class: "error", text: u.code + ": " + u.reason }));
+      if (result.message) parts.push(h("p", { class: "note", text: "No schedule: " + result.message + "." }));
+      result.schedules.forEach((s, i) => parts.push(h("div", { class: "lab-sched" },
+        h("strong", { text: "Option " + (i + 1) + " · " + s.credits + " credits" }), findings(s), sectionTable(s.sections))));
+      if (!parts.length) parts.push(h("p", { class: "note", text: "Nothing found." }));
+      out.replaceChildren(...parts);
+    } catch (error) {
+      out.replaceChildren(h("p", { class: "error", text: error.message }));
+    }
+  });
+})();
 </script>
 </body>
 </html>
