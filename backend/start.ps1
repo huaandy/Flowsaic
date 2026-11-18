@@ -28,7 +28,7 @@ Set-Location $Backend
 function Stop-Start($text) {
     Write-Host ""
     Write-Host "COULDN'T START: $text" -ForegroundColor Red
-    Write-Host "Stuck? See Troubleshooting in README.md, or send the red line to the team chat."
+    Write-Host "Stuck? Find this message under Troubleshooting in README.md (in your Flowsaic folder); it lists the exact steps."
     exit 1
 }
 function Test-Docker {
@@ -97,7 +97,7 @@ if (-not $backendUp) {
     if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { Stop-Start "uv isn't installed. Run setup.cmd first." }
     if (-not (Test-Path (Join-Path $Backend ".venv"))) { Stop-Start "Flowsaic isn't set up yet. Double-click setup.cmd first." }
     if (-not ((Test-Path (Join-Path $Backend ".env")) -or (Test-Path (Join-Path $Repo ".env")))) {
-        Stop-Start "There's no .env file. Get it from Victor, put it in the Flowsaic folder (next to setup.cmd), then double-click setup.cmd."
+        Stop-Start "There's no .env file in your Flowsaic folder. Copy your .env file next to setup.cmd (in File Explorer turn on View > Show > File name extensions and check it's named exactly .env), then double-click setup.cmd."
     }
     # Docker Desktop installed in this session isn't on PATH yet.
     $dockerBin = Join-Path $env:ProgramFiles "Docker\Docker\resources\bin"
