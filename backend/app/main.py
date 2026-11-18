@@ -29,11 +29,30 @@ def clear_new_student_on_startup() -> None:
         log.warning("couldn't empty user 5 at startup (%s)", type(error).__name__)
 
 
+def mark_interrupted_runs_on_startup() -> None:
+    """A run still 'running' when the backend starts was cut off (a restart, a closed window),
+    so the page polling it gets 'failed' instead of waiting forever. Runs on every start, even
+    with PUBLIC_REFRESH_ON_STARTUP off (fixed Nov 18: a cut-off audit stayed 'running'). Never raises."""
+    try:
+        count = refresh.mark_interrupted_runs()
+        if count:
+            log.info("%s cut-off refresh runs marked failed", count)
+    except Exception as error:  # e.g. the database isn't up yet
+        log.warning("couldn't check for cut-off runs at startup (%s)", type(error).__name__)
+
+
+def startup_runs() -> None:
+    """In order, in one background thread: mark cut-off runs failed first, so the refresh
+    started next (which creates new 'running' rows) is never caught by it."""
+    mark_interrupted_runs_on_startup()
+    refresh.startup_refresh()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Refresh public catalog data in the background if it is stale. Startup never waits:
     # even the database check runs in the thread.
-    threading.Thread(target=refresh.startup_refresh, name="startup-refresh", daemon=True).start()
+    threading.Thread(target=startup_runs, name="startup-refresh", daemon=True).start()
     threading.Thread(target=clear_new_student_on_startup, name="clear-new-student", daemon=True).start()
     yield
 

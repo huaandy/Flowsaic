@@ -142,7 +142,7 @@ def startup_refresh() -> None:
     if not get_settings().public_refresh_on_startup:
         return
     try:
-        mark_interrupted_runs()
+        # Cut-off runs are marked failed just before this, on every start (main.startup_runs).
         if public_refresh_due():
             run_ids = start_public_refresh()
             log.info("public refresh started on startup: %s", {k: str(v) for k, v in run_ids.items()})

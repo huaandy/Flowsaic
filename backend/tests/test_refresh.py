@@ -123,3 +123,26 @@ def test_refresh_is_due_when_either_scraper_is_stale(monkeypatch):
 def test_startup_does_nothing_when_switched_off(monkeypatch):
     monkeypatch.setattr(refresh, "mark_interrupted_runs", lambda: pytest.fail("touched the database"))
     refresh.startup_refresh()  # conftest sets PUBLIC_REFRESH_ON_STARTUP=false
+
+
+def test_cut_off_runs_are_marked_failed_on_every_start_before_the_refresh(monkeypatch):
+    """A connect cut off by a restart must not stay 'running' (Nov 18), even with the startup
+    refresh off; and the marking runs before the refresh creates new 'running' rows."""
+    from app import main
+
+    calls = []
+    monkeypatch.setattr(refresh, "mark_interrupted_runs", lambda: calls.append("mark") or 1)
+    monkeypatch.setattr(refresh, "startup_refresh", lambda: calls.append("refresh"))
+    main.startup_runs()
+    assert calls == ["mark", "refresh"]
+
+
+def test_marking_cut_off_runs_never_breaks_startup(monkeypatch):
+    from app import main
+
+    def database_down():
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(refresh, "mark_interrupted_runs", database_down)
+    monkeypatch.setattr(refresh, "startup_refresh", lambda: None)
+    main.startup_runs()  # no exception
