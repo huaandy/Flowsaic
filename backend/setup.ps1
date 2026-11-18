@@ -82,18 +82,27 @@ Ok "Docker is running"
 Step "2/7  Checking your .env file"
 $envBackend = Join-Path $Backend ".env"
 $envRoot = Join-Path $Repo ".env"
+# Windows often renames the file when it's saved or downloaded: ".env.txt" (Notepad),
+# or "env" / "env.txt" (the leading dot dropped). Put it back to ".env".
 foreach ($dir in @($Backend, $Repo)) {
-    $txt = Join-Path $dir ".env.txt"
-    if ((Test-Path $txt) -and -not (Test-Path (Join-Path $dir ".env"))) {
-        Rename-Item $txt ".env"
-        Ok "Renamed .env.txt to .env (Notepad adds .txt)"
+    if (Test-Path (Join-Path $dir ".env")) { continue }
+    foreach ($wrong in @(".env.txt", "env", "env.txt")) {
+        $candidate = Join-Path $dir $wrong
+        if (Test-Path $candidate -PathType Leaf) {
+            Rename-Item $candidate ".env"
+            Ok "Renamed '$wrong' to '.env' in $dir"
+            break
+        }
     }
 }
 # Both places work; backend\.env wins for any setting it has.
 $envFiles = @(@($envRoot, $envBackend) | Where-Object { Test-Path $_ })
 if ($envFiles.Count -eq 0) {
     Warn "No .env file found, so I'm making backend\.env from .env.example."
-    Copy-Item (Join-Path $Backend ".env.example") $envBackend
+    # Leave out the example's placeholder values so they can never override a real setting.
+    $lines = [System.IO.File]::ReadAllLines((Join-Path $Backend ".env.example")) |
+        Where-Object { $_ -notmatch "^\s*(GEMINI_API_KEY|SECRET_KEY)\s*=" -and $_ -notmatch "^\s*GEMINI_MODEL\s*=\s*$" }
+    [System.IO.File]::WriteAllLines($envBackend, $lines, (New-Object System.Text.UTF8Encoding($false)))
     $envFiles = @($envBackend)
 }
 # Python can't read a .env saved as "Unicode" (UTF-16) or with a byte-order mark.
@@ -145,10 +154,18 @@ if ($hasKey) { Ok ".env is ready" } else { Warn ".env works, but without a Gemin
 
 # --- 3. Database ---------------------------------------------------------------------------------
 Step "3/7  Starting the database"
-Push-Location $Repo
-docker compose up -d
-$code = $LASTEXITCODE
-Pop-Location
+# The database container is shared by every copy of the repo on this laptop. If it already
+# exists (from this folder or another clone), just make sure it's running.
+cmd /c "docker container inspect flowsaic-db >nul 2>&1"
+if ($LASTEXITCODE -eq 0) {
+    docker start flowsaic-db | Out-Null
+    $code = $LASTEXITCODE
+} else {
+    Push-Location $Repo
+    docker compose up -d
+    $code = $LASTEXITCODE
+    Pop-Location
+}
 if ($code -ne 0) {
     Stop-Setup "Docker couldn't start the database (see the message above). If it mentions port 5433, something else is using that port."
 }

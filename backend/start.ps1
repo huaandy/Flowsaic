@@ -56,10 +56,17 @@ if (-not (Test-Docker)) {
     }
 }
 
-Push-Location $Repo
-docker compose up -d
-$code = $LASTEXITCODE
-Pop-Location
+# The database container is shared by every copy of the repo on this laptop: reuse it if it exists.
+cmd /c "docker container inspect flowsaic-db >nul 2>&1"
+if ($LASTEXITCODE -eq 0) {
+    docker start flowsaic-db | Out-Null
+    $code = $LASTEXITCODE
+} else {
+    Push-Location $Repo
+    docker compose up -d
+    $code = $LASTEXITCODE
+    Pop-Location
+}
 if ($code -ne 0) { Stop-Start "Docker couldn't start the database (see the message above)." }
 $deadline = (Get-Date).AddMinutes(2)
 do {

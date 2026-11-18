@@ -1,6 +1,9 @@
 # Local development database: Postgres 17 with pgvector.
 # Start:  docker compose up -d      Stop:  docker compose down
 # The password below is for this local container only. Never reuse it anywhere real.
+# Fixed project name: every clone of the repo on a laptop (whatever its folder is called)
+# uses the same flowsaic-db container and data, instead of colliding on the name.
+name: flowsaic
 services:
   db:
     image: pgvector/pgvector:pg17
