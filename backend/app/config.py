@@ -1,17 +1,24 @@
-"""Settings, read from backend/.env. Secrets live only there (AGENTS.md ground rule 2)."""
+"""Settings, read from a .env file. Secrets live only there (AGENTS.md ground rule 2).
+
+The .env can sit in backend/ (preferred) or in the repo root; if both exist, backend/.env
+wins for any setting it has. Real environment variables win over both.
+"""
 
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 REPO_DIR = BACKEND_DIR.parent
+# Later files win. Missing files are skipped.
+ENV_FILES = (REPO_DIR / ".env", BACKEND_DIR / ".env")
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=BACKEND_DIR / ".env",
+        env_file=ENV_FILES,
         env_file_encoding="utf-8",
         extra="ignore",
         # Keep secret values out of validation error messages.
@@ -45,6 +52,23 @@ class Settings(BaseSettings):
     degree_maps_delay_seconds: float = 30.0
 
 
+class MissingSettings(RuntimeError):
+    """A required setting isn't in the .env file. The message says what to do."""
+
+
+def load_settings(env_files=ENV_FILES) -> Settings:
+    try:
+        return Settings(_env_file=env_files)
+    except ValidationError as error:
+        missing = [str(e["loc"][0]).upper() for e in error.errors() if e["type"] == "missing"]
+        names = ", ".join(missing) or "A setting"
+        raise MissingSettings(
+            f"{names} is missing. Put your .env file in backend/.env (or the Flowsaic folder), "
+            "starting from backend/.env.example, and check it isn't named .env.txt. "
+            "setup.cmd checks all of this for you."
+        ) from None
+
+
 @lru_cache  # read .env once, then reuse; restart the server after changing .env
 def get_settings() -> Settings:
-    return Settings()
+    return load_settings()

@@ -48,12 +48,24 @@ Backend entry point: `backend/app/main.py`. Run with `uv sync`, then `uv run fas
 
 ## Run locally
 
-1. `docker compose up -d` from the repo root starts Postgres 17 (pgvector image) on host port **5433** (5432 is often taken by a local Postgres). Copy the `DATABASE_URL` line from `backend/.env.example` into `backend/.env`.
-2. From `backend/`: `uv sync`, then `uv run alembic upgrade head` builds the tables. Alembic lives in `backend/alembic/` because it imports the app's settings and models. For mySAU connect, also run `uv run playwright install chromium` once.
-3. Run the seed scripts in order (see Data loading). Run them from `backend/` so they use its environment, e.g. `uv run python ..\db\scripts\load_course_info.py`.
-4. `uv run python ..\db\scripts\check_db.py` confirms the connection and the pgvector extension.
+**The easy way (Windows):** install [Git](https://git-scm.com/) and [Docker Desktop](https://www.docker.com/products/docker-desktop/), clone the repo, put the `.env` from Victor in the `Flowsaic` folder (or `Flowsaic\backend`), then:
 
-Same database on every laptop.
+1. Double-click **`setup.cmd`** once. It checks your tools (installs uv if missing, starts Docker), fixes common `.env` mistakes (a `.env.txt` name, a "Unicode" save, a missing `DATABASE_URL`), starts the database, installs everything including Chromium, and loads all the data. It asks whether to load this term's course schedule live from mySAU (a browser opens and you sign in); if that fails it says why and uses the saved schedule. Safe to run again; it asks before resetting the sign-in users.
+2. Double-click **`start.cmd`** any time to run Flowsaic. It starts Docker and the database if needed, runs the server and opens http://127.0.0.1:8000/ (sign in as 1–4, any password). If Flowsaic is already running it just opens the page. `start.cmd -Port 8001` uses another port.
+
+The scripts are `backend/setup.ps1` and `backend/start.ps1`; `db/scripts/status.py` prints what's loaded. Settings are read from `backend/.env` and the repo-root `.env` (backend wins); a missing `DATABASE_URL` gives a plain message saying where to put the file.
+
+**By hand** (any OS; on Mac/Linux write `../db/scripts/...` instead of `..\db\scripts\...`). You need Git, Docker Desktop (running) and [uv](https://docs.astral.sh/uv/). Every laptop has its own database, filled once with these steps:
+
+1. **`.env`:** put it in `backend/.env` or the repo root (start from `backend/.env.example`; get the Gemini key from Victor). Never commit it.
+2. **Database:** `docker compose up -d` from the repo root starts Postgres 17 (pgvector image) on host port **5433** (5432 is often taken by a local Postgres).
+3. **Backend:** from `backend/`: `uv sync`, then `uv run alembic upgrade head` (builds the tables; Alembic lives in `backend/alembic/`), then `uv run playwright install chromium` once (for mySAU).
+4. **This term's course schedule, live from mySAU:** `uv run python ..\db\scripts\connect_mysau.py`. A Chromium window opens; sign in to mySAU yourself (Microsoft + Duo). It exports the live course schedule and loads it; no Flowsaic student is needed and nothing about your login is stored. If mySAU is down, `uv run python ..\db\scripts\import_sections.py` loads the committed Nov 16 file (`data/sections_spring_2027.csv`) instead.
+5. **Course descriptions, prereqs and degree maps** (no requests to SAU; everything comes from files in the repo):
+   - `uv run python ..\db\scripts\scrape_course_info.py`: loads `data/course_info.csv` and embeds the ~1,868 descriptions for RAG (a few minutes and a few cents on the Gemini key; reruns only embed changed text).
+   - `uv run python ..\db\scripts\scrape_degree_maps.py --offline`: builds all 139 degree plans from the saved pages in `data/raw/degree_maps/`, in seconds.
+6. **Sign-in users:** `uv run python ..\db\scripts\seed_demo.py` (after steps 4–5): users 1–3 (demo students) and 4 (new student).
+7. **Check and run:** `uv run python ..\db\scripts\check_db.py`, `uv run pytest`, then `uv run fastapi dev app/main.py` and open http://127.0.0.1:8000/ (sign in as 1–4, any password). API docs at `/docs`.
 
 ## Rules for any AI assistant
 
@@ -185,6 +197,7 @@ uv run python ..\db\scripts\scrape_degree_maps.py                 # every progra
 uv run python ..\db\scripts\scrape_degree_maps.py --only computer-science
 uv run python ..\db\scripts\scrape_degree_maps.py --offline       # re-parse saved pages, no requests
 uv run python ..\db\scripts\scrape_degree_maps.py --show "Computer Science, BS"
+uv run python ..\db\scripts\connect_mysau.py                         # live course schedule only (you sign in)
 uv run python ..\db\scripts\connect_mysau.py --student-id <uuid> --fetch sections audit
 uv run python ..\db\scripts\import_sections.py <export.csv>       # load a schedule export by hand
 ```
