@@ -132,13 +132,17 @@ def _csv_rows() -> dict[str, dict]:
         return {row["code"]: row for row in csv.DictReader(file)}
 
 
-def _apply_changes(raw, previous_rows, log_line, load_and_embed: bool) -> tuple[int, dict]:
-    """Rebuild the CSVs. If course rows changed, load them and re-embed changed text."""
+def _apply_changes(raw, previous_rows, log_line, load_and_embed: bool, always_load: bool = False) -> tuple[int, dict]:
+    """Rebuild the CSVs. If course rows changed (or always_load), load them and embed what
+    isn't embedded yet. always_load is for the end of a run: a fresh database (a teammate's
+    first setup) has an up-to-date CSV but no courses, so "nothing changed" isn't enough
+    (fixed Nov 18). Loading is an upsert and embedding skips unchanged text, so it's cheap."""
     rows = _rows_by_code(raw)
     changed = sum(1 for code, row in rows.items() if previous_rows.get(code) != row)
-    if not changed:
+    if not changed and not always_load:
         return 0, rows
-    write_csvs(list(rows.values()), COURSE_INFO_PATH, NEEDS_REVIEW_PATH)
+    if changed:
+        write_csvs(list(rows.values()), COURSE_INFO_PATH, NEEDS_REVIEW_PATH)
     if load_and_embed:
         from app.course_embed import embed_changed_courses
         from app.course_load import load_course_info_csv
@@ -205,5 +209,5 @@ def refresh_course_info(
         save_fetched(fetched)
         if own_client:
             client.close()
-    step, rows = _apply_changes(raw, rows, log_line, load_and_embed)
+    step, rows = _apply_changes(raw, rows, log_line, load_and_embed, always_load=True)
     return changed + step

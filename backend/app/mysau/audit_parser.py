@@ -6,13 +6,15 @@ Two steps:
    in progress icon beside it. The PDF text has no icons, so they come from the layout.
 2. parse_lines(lines) -> ParsedAudit. Pure, so it is tested with a fake audit.
 
-Privacy (prompt 2): from the header only the major, catalog year, classification and a
-yes/no hold are read. Name, ID number, address, phones, advisor and GPA are never read
-into the result, and GPA lines elsewhere are dropped. A hold's text is never kept.
-Nothing here logs or prints audit text.
+Privacy (prompt 2; the name since Nov 18): from the header only the student's first and last
+name (no middle name or initial), the major, catalog year, classification and a yes/no hold
+are read. ID number, address, phones, advisor and GPA are never read into the result, and
+GPA lines elsewhere are dropped. A hold's text is never kept. Nothing here logs or prints
+audit text.
 
 What is kept:
-- students: major, catalog_year, classification, has_hold, total hours earned / needed.
+- students: name ("First Last"), major, catalog_year, classification, has_hold, total hours
+  earned / needed.
 - completed_courses (source 'audit'): code, grade, credits, term, status, requirement_name
   (None for "Nonapplied Coursework").
 - student_requirements: every requirement block, met or not, across all pages. Block
@@ -48,6 +50,7 @@ TOTALS = re.compile(r"Total Hours Earned/Needed:\s*(\d+(?:\.\d+)?)\s*/\s*(\d+(?:
 DEGREE_HOURS = re.compile(r"Degree Hours:\s*(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)")
 CATALOG_YEAR = re.compile(r"Catalog\s*Year\s*(\d{4}(?:-\d{4})?)")  # the PDF packs this text tightly
 MAJOR = re.compile(r"^Major 1:\s*(.+)$")
+NAME = re.compile(r"^Name:\s*(.+)$")
 CLASSIFICATION = re.compile(rf"Classification:\s*({'|'.join(CLASSIFICATIONS)})\b")
 
 # "CSCI-3103-001 Title B 3.00 2024 1S", "ART -2013-032 Title B 3.00 2023 1S",
@@ -110,6 +113,7 @@ class AuditRequirement:
 
 @dataclass
 class ParsedAudit:
+    student_name: str | None = None  # "First Last" only; see first_and_last()
     major: str | None = None
     catalog_year: str | None = None
     classification: str | None = None
@@ -139,11 +143,31 @@ def _option_codes(text: str) -> list[str]:
     return codes
 
 
+def first_and_last(raw: str) -> str | None:
+    """The audit's 'Last, First Middle' -> 'First Last'. A middle name or initial is dropped,
+    a suffix stays with the last name ('Fakerson Jr., Testy Q.' -> 'Testy Fakerson Jr.').
+    Without a comma: first and last word. ALL CAPS becomes Title Case. None if unreadable."""
+    raw = " ".join(raw.split()).strip(" ,")
+    if "," in raw:
+        last, given = (part.strip() for part in raw.split(",", 1))
+        first = given.split(" ")[0] if given else ""
+    else:
+        words = raw.split(" ")
+        first, last = (words[0], words[-1]) if len(words) >= 2 else ("", "")
+    name = f"{first} {last}".strip()
+    if not first or not last or len(name) > 80 or not re.fullmatch(r"[A-Za-z][A-Za-z.'\- ]*", name):
+        return None
+    return name.title() if name.isupper() else name
+
+
 def parse_header(lines: list[AuditLine]) -> dict:
-    """Major, catalog year, classification and a yes/no hold. Nothing else is read."""
-    found: dict = {"major": None, "catalog_year": None, "classification": None, "has_hold": False}
+    """First and last name, major, catalog year, classification and a yes/no hold. Nothing else is read."""
+    found: dict = {"student_name": None, "major": None, "catalog_year": None, "classification": None,
+                   "has_hold": False}
     for index, line in enumerate(lines):
         text = " ".join(line.text.split())
+        if found["student_name"] is None and (match := NAME.match(text)):
+            found["student_name"] = first_and_last(match[1])
         if match := CATALOG_YEAR.search(text):
             found["catalog_year"] = match[1]
         if match := MAJOR.match(text):
@@ -166,6 +190,7 @@ def parse_lines(lines: list[AuditLine]) -> ParsedAudit:
         len(lines),
     )
     header = parse_header(lines[:first_block])
+    result.student_name = header["student_name"]
     result.major = header["major"]
     result.catalog_year = header["catalog_year"]
     result.classification = header["classification"]
@@ -174,7 +199,7 @@ def parse_lines(lines: list[AuditLine]) -> ParsedAudit:
         if match := DEGREE_HOURS.search(line.text):
             result.total_hours_earned, result.total_hours_needed = Decimal(match[1]), Decimal(match[2])
     # Backstop for the page footer, which repeats the student's name: any later line that
-    # contains the header's name is dropped. The name itself is never stored.
+    # contains the header's name is dropped, so the name never ends up in requirement text.
     private = [
         " ".join(line.text.split(":", 1)[1].split())
         for line in lines[:first_block]

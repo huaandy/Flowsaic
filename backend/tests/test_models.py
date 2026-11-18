@@ -1,4 +1,4 @@
-"""Schema checks for migration 0002 (data retrieval). No database needed.
+"""Schema checks for migrations 0002 (data retrieval) and 0003 (student planning). No database needed.
 
 `uv run alembic check` against a migrated database confirms the models and the
 migrations agree; these tests pin the parts other code relies on.
@@ -23,9 +23,10 @@ def check_constraints(table_name: str) -> set[str]:
     return {str(constraint.sqltext) for constraint in table.constraints if hasattr(constraint, "sqltext")}
 
 
-def test_migrations_form_one_line_ending_at_0002():
+def test_migrations_form_one_line_ending_at_0003():
     script = ScriptDirectory.from_config(Config(str(BACKEND_DIR / "alembic.ini")))
-    assert script.get_heads() == ["0002"]
+    assert script.get_heads() == ["0003"]
+    assert script.get_revision("0003").down_revision == "0002"
     assert script.get_revision("0002").down_revision == "0001"
 
 
@@ -82,3 +83,45 @@ def test_public_data_columns():
     assert columns("degree_plans")["source_url"].nullable
     assert columns("degree_plans")["scraped_at"].nullable
     assert columns("doc_chunks")["content_hash"].nullable
+
+
+def test_student_planning_tables():
+    event = columns("calendar_events")
+    assert set(event) == {
+        "id", "student_id", "title", "day", "start_time", "end_time", "location", "category", "recurrence",
+        "priority", "fixed", "created_at", "updated_at",
+    }
+    assert str(event["start_time"].type) == "TIME" and event["location"].nullable
+    rules = check_constraints("calendar_events")
+    for rule in ("day IN ('M', 'T', 'W', 'R', 'F')", "start_time < end_time",
+                 "category IN ('work', 'personal_study', 'extracurricular')", "recurrence IN ('none', 'weekly')",
+                 "priority IN ('low', 'normal', 'high')"):
+        assert rule in rules
+
+    preferences = columns("student_preferences")
+    assert set(preferences) == {"student_id", "preferred_time", "preferred_days", "min_credits", "max_credits",
+                                "delivery", "flexibility", "updated_at"}
+    assert "preferred_time IN ('morning', 'midday', 'afternoon', 'evening', 'none')" in check_constraints("student_preferences")
+    # The front end's travel distance and minimum rating stay mock: never stored.
+    assert not {"distance", "min_rating"} & set(preferences)
+
+    settings = columns("student_settings")
+    assert set(settings) == {"student_id", "email_notifications", "push_notifications", "advisor_updates",
+                             "schedule_alerts", "appearance", "high_contrast", "larger_text", "reduce_motion",
+                             "profile_visibility", "photo", "updated_at"}
+    assert settings["photo"].nullable
+    for table in ("calendar_events", "student_preferences", "student_settings"):
+        fk = next(iter(columns(table)["student_id"].foreign_keys))
+        assert fk.ondelete == "CASCADE" and fk.column.table.name == "students"
+
+
+def test_migration_0003_creates_exactly_the_planning_tables():
+    script = ScriptDirectory.from_config(Config(str(BACKEND_DIR / "alembic.ini")))
+    source = Path(script.get_revision("0003").path).read_text(encoding="utf-8")
+    upgrade = source.split("def upgrade")[1].split("def downgrade")[0]
+    assert upgrade.count("op.create_table(") == 3
+    for table in ("calendar_events", "student_preferences", "student_settings"):
+        assert f"op.create_table('{table}'" in upgrade
+    # Applies on top of existing data: it never touches an existing table.
+    for forbidden in ("drop_", "alter_column", "add_column", "op.execute"):
+        assert forbidden not in upgrade

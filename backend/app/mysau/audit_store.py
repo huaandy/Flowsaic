@@ -1,6 +1,7 @@
 """Save a parsed degree audit to an EXISTING Flowsaic student.
 
-- Never creates a student and never changes the student's name, email or password.
+- Never creates a student and never changes the student's email or password. The name is
+  set from the audit ("First Last", Nov 18) when the audit has a readable one.
 - students: major, catalog_year, classification, has_hold, total hours, audit_refreshed_at.
 - completed_courses: the student's source='audit' rows are replaced; self_reported and
   manual rows are left alone.
@@ -36,6 +37,7 @@ def save_audit(student_id: uuid.UUID, parsed: ParsedAudit) -> int:
             update(Student)
             .where(Student.id == student_id)
             .values(
+                **({"name": parsed.student_name} if parsed.student_name else {}),
                 major=parsed.major,
                 catalog_year=parsed.catalog_year,
                 classification=parsed.classification,

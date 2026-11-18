@@ -328,3 +328,106 @@ class RefreshRun(Base):
     student_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("students.id", ondelete="CASCADE")
     )
+
+
+# --- student planning (migration 0003) -------------------------------------------------------
+
+EVENT_CATEGORIES = ("work", "personal_study", "extracurricular")
+EVENT_RECURRENCES = ("none", "weekly")
+EVENT_PRIORITIES = ("low", "normal", "high")
+PREFERRED_TIMES = ("morning", "midday", "afternoon", "evening", "none")
+DELIVERIES = ("in_person", "online")
+FLEXIBILITIES = ("flexible", "balanced", "strict")
+APPEARANCES = ("light", "dark", "system")
+VISIBILITIES = ("private", "advisors", "community")
+
+
+def _one_of(column: str, values: tuple[str, ...]) -> str:
+    return f"{column} IN (" + ", ".join(f"'{v}'" for v in values) + ")"
+
+
+class CalendarEvent(Base):
+    """A student's own commitment on the weekly calendar (work, study, a club).
+
+    Fixed events block courses (checker conflict commitment_overlap); flexible ones only warn
+    (commitment_overlap_flexible). Events have a weekday, not a date: the checker treats every
+    event as a weekly block, whatever its recurrence says.
+    """
+
+    __tablename__ = "calendar_events"
+    __table_args__ = (
+        CheckConstraint("day IN ('M', 'T', 'W', 'R', 'F')", name="day"),
+        CheckConstraint("start_time < end_time", name="times"),
+        CheckConstraint(_one_of("category", EVENT_CATEGORIES), name="category"),
+        CheckConstraint(_one_of("recurrence", EVENT_RECURRENCES), name="recurrence"),
+        CheckConstraint(_one_of("priority", EVENT_PRIORITIES), name="priority"),
+        Index("ix_calendar_events_student_id", "student_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(Text)
+    day: Mapped[str] = mapped_column(Text)
+    start_time: Mapped[time] = mapped_column(Time)
+    end_time: Mapped[time] = mapped_column(Time)
+    location: Mapped[str | None] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(Text, server_default="personal_study")
+    recurrence: Mapped[str] = mapped_column(Text, server_default="weekly")
+    priority: Mapped[str] = mapped_column(Text, server_default="normal")
+    fixed: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StudentPreferences(Base):
+    """Scheduling preferences, one row per student. Defaults for Create Schedule, AI suggest and Flow.
+    A missing row means the defaults below."""
+
+    __tablename__ = "student_preferences"
+    __table_args__ = (
+        CheckConstraint(_one_of("preferred_time", PREFERRED_TIMES), name="preferred_time"),
+        CheckConstraint(_one_of("flexibility", FLEXIBILITIES), name="flexibility"),
+        CheckConstraint("min_credits <= max_credits", name="credits"),
+        CheckConstraint("delivery <@ ARRAY['in_person', 'online']::text[]", name="delivery"),
+    )
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("students.id", ondelete="CASCADE"), primary_key=True
+    )
+    preferred_time: Mapped[str] = mapped_column(Text, server_default="none")
+    # Letters from MTWRF, in that order. Empty = no preference.
+    preferred_days: Mapped[str] = mapped_column(Text, server_default="")
+    min_credits: Mapped[int] = mapped_column(Integer, server_default="12")
+    max_credits: Mapped[int] = mapped_column(Integer, server_default="18")
+    delivery: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), server_default=text("'{in_person,online}'::text[]")
+    )
+    flexibility: Mapped[str] = mapped_column(Text, server_default="balanced")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StudentSettings(Base):
+    """App settings, one row per student. A missing row means the defaults below."""
+
+    __tablename__ = "student_settings"
+    __table_args__ = (
+        CheckConstraint(_one_of("appearance", APPEARANCES), name="appearance"),
+        CheckConstraint(_one_of("profile_visibility", VISIBILITIES), name="profile_visibility"),
+        CheckConstraint("photo IS NULL OR photo LIKE 'data:image/%'", name="photo"),
+    )
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("students.id", ondelete="CASCADE"), primary_key=True
+    )
+    email_notifications: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    push_notifications: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    advisor_updates: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    schedule_alerts: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    appearance: Mapped[str] = mapped_column(Text, server_default="light")
+    high_contrast: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    larger_text: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    reduce_motion: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    profile_visibility: Mapped[str] = mapped_column(Text, server_default="advisors")
+    # A profile photo as an image data URL (data:image/png;base64,...), at most ~1 MB.
+    photo: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

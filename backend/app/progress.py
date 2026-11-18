@@ -503,10 +503,92 @@ def build_progress(
     }
 
 
+# --- per-course flags for the catalog ------------------------------------------------------
+
+@dataclass
+class CourseFlags:
+    """What one student's record says about any course: built from build_progress's own tree,
+    so the catalog and /me/progress always agree."""
+
+    passed: dict[str, float]
+    in_progress: dict[str, float]
+    prereqs: dict[str, list[list[str]]]
+    listed: dict[str, list[str]]  # course code -> requirement names that list it
+    electives: list[Elective] = field(default_factory=list)  # subject/level electives of the plan
+    has_plan: bool = False
+
+    def missing_prereqs(self, code: str) -> list[list[str]]:
+        return missing_prereqs(code, self.prereqs, self.passed, self.in_progress)
+
+    def eligibility(self, code: str) -> str:
+        """completed | in_progress | missing_prereq | eligible. F and W aren't completed."""
+        if code in self.passed:
+            return "completed"
+        if code in self.in_progress:
+            return "in_progress"
+        return "missing_prereq" if self.missing_prereqs(code) else "eligible"
+
+    def requirement_names(self, code: str) -> list[str]:
+        """Requirements that list the course by name; otherwise the electives it would fill.
+        A course the plan lists by name is never also an elective (as in can_take)."""
+        names = self.listed.get(code)
+        if names:
+            return list(names)
+        return [e.text for e in self.electives if e.matches(code)]
+
+    def for_course(self, code: str) -> dict:
+        names = self.requirement_names(code)
+        return {"eligibility": self.eligibility(code), "missing_prereqs": self.missing_prereqs(code),
+                "on_my_plan": bool(names), "requirement_names": names}
+
+
+def requirement_index(tree: list[dict]) -> dict[str, list[str]]:
+    """Course code -> names of the requirement nodes (or elective lines) that list or count it."""
+    index: dict[str, list[str]] = {}
+
+    def add(code: str, name: str) -> None:
+        names = index.setdefault(code, [])
+        if name not in names:
+            names.append(name)
+
+    def walk(node: dict) -> None:
+        for course in node["courses"]:
+            add(course["code"], node["name"])
+        for elective in node["electives"]:
+            for course in elective["courses"]:
+                add(course["code"], elective["text"])
+        for child in node["children"]:
+            walk(child)
+
+    for node in tree:
+        walk(node)
+    return index
+
+
+def course_flags(inputs: dict) -> CourseFlags:
+    """Pure: load_progress_inputs(...) -> CourseFlags."""
+    result = build_progress(**inputs)
+    passed, in_progress = split_taken(inputs["taken"])
+    electives = ([e for g in inputs["groups"] for e in parse_electives(g.note) if e.prefixes or e.level]
+                 if result["source"] == "degree_plan" else [])
+    return CourseFlags(passed, in_progress, inputs["prereqs"], requirement_index(result["requirements"]),
+                       electives, has_plan=result["source"] != "none")
+
+
 # --- database --------------------------------------------------------------------------------
 
 def load_progress(student_id: uuid.UUID) -> dict:
-    """Everything build_progress needs, read for one student."""
+    """GET /me/progress for one student."""
+    return build_progress(**load_progress_inputs(student_id))
+
+
+def load_course_flags(student_id: uuid.UUID) -> "CourseFlags":
+    """Per-course flags for the catalog, from the same inputs and tree as load_progress."""
+    return course_flags(load_progress_inputs(student_id))
+
+
+def load_progress_inputs(student_id: uuid.UUID) -> dict:
+    """Everything build_progress needs, read for one student (its keyword arguments)."""
     with SessionLocal() as session:
         student = session.get(Student, student_id)
         if student is None:
@@ -576,7 +658,7 @@ def load_progress(student_id: uuid.UUID) -> dict:
             if course_credits is not None:
                 credits[code] = float(course_credits)
 
-    return build_progress(
+    return dict(
         source=source,
         plan={"name": plan_row.name, "catalog_year": plan_row.catalog_year} if plan_row and source == "degree_plan" else None,
         term={"id": term_row.id, "name": term_row.name} if term_row else None,

@@ -6,13 +6,27 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
-from app import refresh
+import logging
+
+from app import demo_seed, refresh
 from app.auth import ApiError
-from app.routers import ai, auth, connect, data, dev, lab, me, schedules
+from app.config import get_settings
+from app.routers import ai, auth, catalog, connect, data, dev, lab, me, planning, schedules
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+log = logging.getLogger(__name__)
+
+
+def clear_new_student_on_startup() -> None:
+    """User 5 (New Student) starts every backend run empty. Never raises."""
+    try:
+        if demo_seed.clear_new_student():
+            log.info("user 5 (New Student) emptied for this run")
+    except Exception as error:  # e.g. the database isn't up yet; sign-in clears them too
+        log.warning("couldn't empty user 5 at startup (%s)", type(error).__name__)
 
 
 @asynccontextmanager
@@ -20,13 +34,26 @@ async def lifespan(app: FastAPI):
     # Refresh public catalog data in the background if it is stale. Startup never waits:
     # even the database check runs in the thread.
     threading.Thread(target=refresh.startup_refresh, name="startup-refresh", daemon=True).start()
+    threading.Thread(target=clear_new_student_on_startup, name="clear-new-student", daemon=True).start()
     yield
 
 
 app = FastAPI(title="Flowsaic API", lifespan=lifespan)
 
+# The React dev server may call the API directly with the session cookie. Exact origins only,
+# never "*" (ground rule 9). Through the Vite proxy (/api) the browser sees one origin anyway.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type"],
+)
+
 app.include_router(auth.router)
 app.include_router(me.router)
+app.include_router(planning.router)
+app.include_router(catalog.router)
 app.include_router(schedules.router)
 app.include_router(ai.router)
 app.include_router(data.router)

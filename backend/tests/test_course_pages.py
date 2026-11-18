@@ -46,3 +46,31 @@ def test_stale_pages_never_fetched_first_then_oldest():
         "3": "2026-11-10T00:00:00+00:00",
     }
     assert stale_coids(["1", "2", "3", "4"], fetched, now, timedelta(days=7)) == ["4", "3", "2"]
+
+
+def test_a_fresh_database_gets_courses_even_when_the_csv_is_up_to_date(monkeypatch, tmp_path):
+    """A teammate's first setup: course_info.csv already matches the raw text, but the database
+    is empty. The run must still load (and embed) the courses (bug found Nov 18)."""
+    from types import SimpleNamespace
+
+    from app import course_embed, course_load
+    from app.catalog import course_pages
+
+    raw = [["1", "ZOO 2023 - Imaginary Zoology", "Animals that do not exist. 3 hours."]]
+    rows = course_pages._rows_by_code(raw)
+    calls = []
+    monkeypatch.setattr(course_pages, "load_raw", lambda: raw)
+    monkeypatch.setattr(course_pages, "load_fetched", lambda raw: {"1": datetime.now(UTC).isoformat()})
+    monkeypatch.setattr(course_pages, "save_raw", lambda raw: None)
+    monkeypatch.setattr(course_pages, "save_fetched", lambda fetched: None)
+    monkeypatch.setattr(course_pages, "_csv_rows", lambda: dict(rows))  # the CSV is up to date
+    monkeypatch.setattr(course_pages, "write_csvs", lambda *a: calls.append("write"))
+    monkeypatch.setattr(course_load, "load_course_info_csv", lambda path: calls.append("load") or SimpleNamespace(courses=1))
+    monkeypatch.setattr(course_embed, "embed_changed_courses",
+                        lambda: calls.append("embed") or SimpleNamespace(embedded=1, stopped=None))
+    monkeypatch.setattr(course_pages, "get_settings", lambda: SimpleNamespace(
+        course_info_crawl=False, public_refresh_max_age_days=7, gemini_api_key="test"))
+
+    changed = course_pages.refresh_course_info(client=SimpleNamespace(close=lambda: None), log_line=lambda line: None)
+    assert changed == 0  # nothing in the CSV changed...
+    assert calls == ["load", "embed"]  # ...but the database was filled, and the CSV left alone

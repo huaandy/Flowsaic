@@ -1110,3 +1110,47 @@ html[data-theme="dark"] .mobile-bottom-nav button:nth-child(2) .icon{background:
 html[data-theme="dark"] .mobile-bottom-nav button:nth-child(3) .icon,
 html[data-theme="dark"] .mobile-bottom-nav button:nth-child(5) .icon{background:#40395f}
 html[data-theme="dark"] .mobile-bottom-nav button:nth-child(4) .icon{background:#21494a}
+
+/* --- Backend wiring (Nov 18): new elements only, matching the existing look ------------------ */
+.login-form{width:100%;display:flex;flex-direction:column;gap:12px;margin-top:8px;text-align:left}
+.login-form label{display:flex;flex-direction:column;gap:7px;font-size:12px;font-weight:600;color:#050505}
+.login-form input{width:100%;height:42px;border:1px solid #ced0d4;border-radius:8px;padding:0 11px;outline:0;color:#050505;background:#fff}
+.login-form input:focus{border-color:#1877f2;box-shadow:0 0 0 3px #1877f21f}
+.login-form .primary{margin:4px 0 0}
+.login-error{margin:0;color:#c0392b!important;font-weight:600}
+header>.header-search{position:relative;display:flex;align-items:center;gap:8px;cursor:text}
+.header-search input{flex:1;min-width:0;height:100%;border:0;outline:0;background:transparent;color:#050505;font-size:13px}
+.header-search input::placeholder{color:#65676b}
+.header-search-results{position:absolute;top:46px;left:0;right:0;z-index:40;max-height:420px;overflow:auto;padding:6px;display:flex;flex-direction:column;gap:2px;border-radius:12px;box-shadow:0 8px 28px #0000002b}
+.header-search-results button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;border:0;background:transparent;border-radius:8px;padding:9px 10px;text-align:left;color:#050505}
+.header-search-results button:hover,.header-search-results button:focus-visible{background:#f0f2f5;outline:0}
+.header-search-results span{display:flex;flex-direction:column;gap:3px;min-width:0}
+.header-search-results strong{font-size:13px}
+.header-search-results small{font-size:12px;color:#65676b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.header-search-results em{flex:none;font-style:normal;font-size:11px;color:#1877f2}
+.header-search-empty{padding:12px 10px;font-size:13px;color:#65676b}
+.builder-head .builder-schedule-picker{display:block;margin-top:8px}
+.builder-schedule-picker,.calendar-schedule-select select{height:36px;max-width:220px;border:1px solid #ced0d4;border-radius:8px;background:#fff;color:#050505;padding:0 8px;font-size:12px}
+.calendar-schedule-select{display:flex;align-items:center;gap:8px;font-size:12px;color:#65676b}
+.builder-online-list{border-top:1px solid var(--line);padding:12px 18px;display:flex;flex-direction:column;gap:8px}
+.builder-online-list>div{display:flex;flex-wrap:wrap;gap:8px}
+.builder-online-item{display:grid;grid-template-columns:4px auto;column-gap:8px;align-items:center;text-align:left;border:1px solid #ced0d4;border-radius:10px;background:#fff;padding:8px 12px;color:#050505}
+.builder-online-item i{grid-row:span 3;align-self:stretch;border-radius:4px;background:#1877f2}
+.builder-online-item i.purple{background:#a78bfa}.builder-online-item i.orange{background:#fdba74}.builder-online-item i.mint{background:#5eead4}
+.builder-online-item span,.builder-online-item small{font-size:12px;color:#65676b}
+.builder-online-item.event-conflict{border-color:#e74c3c;box-shadow:0 0 0 2px #e74c3c22}
+.builder-catalog .wide{width:100%;margin-top:8px}
+html[data-theme="dark"] :is(.login-form input,.header-search-results,.builder-schedule-picker,.calendar-schedule-select select,.builder-online-item){background:var(--surface);color:var(--text);border-color:#3e4042}
+html[data-theme="dark"] :is(.login-form label,.header-search input,.header-search-results button){color:var(--text)}
+html[data-theme="dark"] .header-search-results button:hover{background:#3a3b3c}
+@media(max-width:720px){.builder-schedule-picker{max-width:100%;flex:1 1 100%}}
+
+/* Flow: the newest schedule card, pinned above the message box (Nov 18) */
+.flow-latest-schedule{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px;padding:10px 14px;border:1px solid #c7dbff;border-radius:12px;background:#f3f8ff}
+.flow-latest-schedule>div:first-child{display:flex;flex-direction:column;gap:2px;min-width:0}
+.flow-latest-schedule strong{font-size:14px;color:#050505;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.flow-latest-schedule small{font-size:12px;color:#65676b}
+.flow-latest-actions{display:flex;gap:8px;flex:none}
+html[data-theme="dark"] .flow-latest-schedule{background:#202e40;border-color:#4e6c91}
+html[data-theme="dark"] .flow-latest-schedule strong{color:var(--text)}
+@media(max-width:720px){.flow-latest-schedule{flex-direction:column;align-items:stretch}.flow-latest-actions{justify-content:flex-end}}

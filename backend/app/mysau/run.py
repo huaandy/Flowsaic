@@ -22,6 +22,10 @@ class ConnectAlreadyRunning(RuntimeError):
     pass
 
 
+class ExportFailed(RuntimeError):
+    """The browser couldn't export this kind; the message is the connect step's own."""
+
+
 def _safe_error(step: str, error: BaseException) -> str:
     if isinstance(error, ExportNotUnderstood):
         return f"{step}: {error}"  # our own message, about the file's columns
@@ -50,18 +54,22 @@ def run_connect(
     try:
         if "sections" in run_ids:
             try:
+                if "sections" in captured.errors:
+                    raise ExportFailed(captured.errors["sections"])
                 if captured.sections_csv is None:
                     raise ConnectError("sections_not_received")
                 result = import_export_bytes(captured.sections_csv)
                 status(f"imported {len(result.parsed.sections)} sections")
                 finish_run(run_ids["sections"], ok=True, rows_changed=len(result.parsed.sections))
-            except ConnectError as error:
+            except (ConnectError, ExportFailed) as error:
                 finish_run(run_ids["sections"], ok=False, error=str(error))
             except Exception as error:
                 finish_run(run_ids["sections"], ok=False, error=_safe_error("sections_import", error))
 
         if "audit" in run_ids:
             try:
+                if "audit" in captured.errors:
+                    raise ExportFailed(captured.errors["audit"])
                 if captured.audit_pdf is None:
                     raise ConnectError("audit_not_received")
                 from app.mysau.audit_parser import parse_audit_pdf
@@ -70,7 +78,7 @@ def run_connect(
                 rows = save_audit(student_id, parsed)
                 status(f"saved the audit: {len(parsed.requirements)} requirements, {len(parsed.courses)} courses")
                 finish_run(run_ids["audit"], ok=True, rows_changed=rows)
-            except ConnectError as error:
+            except (ConnectError, ExportFailed) as error:
                 finish_run(run_ids["audit"], ok=False, error=str(error))
             except Exception as error:
                 finish_run(run_ids["audit"], ok=False, error=_safe_error("audit_save", error))

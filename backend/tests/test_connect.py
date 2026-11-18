@@ -75,6 +75,23 @@ def test_login_through_microsoft_waits_for_the_student():
     assert page.signed_in and page.waits >= 3
 
 
+def test_a_page_caught_mid_redirect_is_not_signed_in_yet():
+    # Back from Microsoft, mySAU redirects again: the first page has no Login button but is
+    # gone a second later. Signed in only once the same page has stayed for a few checks.
+    page = FakePage(signed_in=True)
+    urls = iter(["https://my.saumag.edu/ICS/sso?step=1", "https://my.saumag.edu/ICS/sso?step=2"])
+
+    def wait(ms):
+        page.waits += 1
+        page.url = next(urls, "https://my.saumag.edu/ICS/")
+
+    page.wait_for_timeout = wait
+    page.url = "https://my.saumag.edu/ICS/sso?step=0"
+    wait_for_login(page, timeout_seconds=10)
+    assert page.url == "https://my.saumag.edu/ICS/"
+    assert page.waits >= 2 + connect.SIGNED_IN_CHECKS - 1
+
+
 def test_login_timeout(monkeypatch):
     page = FakePage(after_click="https://login.microsoftonline.com/x", signs_in_after=10**9)
     with pytest.raises(ConnectError, match="login_timeout"):
@@ -174,6 +191,202 @@ def test_a_missing_file_is_reported(finished):
 def test_browser_steps_wrap_unknown_errors():
     error = ConnectError("audit_export", TimeoutError("waiting for https://my.saumag.edu/?token=abc"))
     assert str(error) == "audit_export failed (TimeoutError)"
+
+
+class Error(Exception):
+    """Stands in for playwright's Error: its message quotes the page."""
+
+
+def test_playwright_errors_get_a_fixed_hint_never_the_message():
+    strict = Error('strict mode violation: get_by_role("link") resolved to 2 elements: <a href="/ICS/Student?id=123">Private Person</a>')
+    assert str(ConnectError("audit_export:academics_link", strict)) == (
+        "audit_export:academics_link failed (Error: more_than_one_match)")
+    closed = Error("Target page, context or browser has been closed")
+    assert str(ConnectError("x", closed)) == "x failed (Error: page_closed)"
+    assert str(ConnectError("x", Error("<html>Name: Private Person</html>"))) == "x failed (Error)"
+
+
+# --- exports ------------------------------------------------------------------------------
+
+class FakeLocator:
+    def __init__(self, page, role, name):
+        self.page, self.role, self.name = page, role, name
+
+    def filter(self, visible=None):
+        assert visible is True  # menus repeat in hidden copies: only visible links
+        return self
+
+    @property
+    def first(self):
+        return self
+
+    def click(self):
+        self.page.clicked.append(self.name)
+        if self.name == self.page.breaks_on and self.page.breaks > 0:
+            self.page.breaks -= 1
+            raise Error("strict mode violation: <a>Private Person, ID 123</a>")
+
+    def wait_for(self, timeout=None):
+        pass
+
+
+class FakeMySAU:
+    def __init__(self, breaks_on=None, breaks=99):
+        self.breaks_on, self.breaks = breaks_on, breaks
+        self.visited, self.clicked = [], []
+
+    def goto(self, url):
+        self.visited.append(url)
+
+    def wait_for_load_state(self, *args, **kwargs):
+        pass
+
+    def wait_for_timeout(self, ms):
+        pass
+
+    def get_by_role(self, role, name, exact=False):
+        return FakeLocator(self, role, name if isinstance(name, str) else "Printable Degree Audit")
+
+
+class FakeContext:
+    def __init__(self, page):
+        self.pages = [page]
+
+
+class Redirecting:
+    """A signed-in mySAU page that interrupts our first `fails` navigations with its own."""
+
+    def __init__(self, fails, url="https://my.saumag.edu/ICS/"):
+        self.fails, self.url, self.gotos = fails, url, 0
+
+    def goto(self, url):
+        self.gotos += 1
+        if self.gotos <= self.fails:
+            raise Error(f'Navigation to "{url}" is interrupted by another navigation to "{self.url}?token=abc"')
+        self.url = url
+
+    def wait_for_load_state(self, *args, **kwargs):
+        pass
+
+    def wait_for_timeout(self, ms):
+        pass
+
+
+def test_going_home_waits_out_mysau_redirects():
+    page = Redirecting(fails=2)
+    connect.go_home(page)
+    assert page.gotos == 3
+
+
+def test_going_home_carries_on_from_another_mysau_page():
+    page = Redirecting(fails=99, url="https://my.saumag.edu/ICS/Students/")
+    connect.go_home(page)  # mySAU keeps sending us to one of its own pages: same top menu
+    assert page.gotos == connect.HOME_ATTEMPTS
+
+
+def test_going_home_gives_up_off_mysau():
+    page = Redirecting(fails=99, url="https://login.microsoftonline.com/x")
+    with pytest.raises(Error) as raised:
+        connect.go_home(page)
+    assert str(ConnectError("audit_export:home", raised.value)) == (
+        "audit_export:home failed (Error: navigation_interrupted)")
+
+
+def test_audit_starts_from_the_home_page_and_names_the_step_that_broke():
+    page = FakeMySAU(breaks_on="Academics")
+    result = Captured()
+    connect.run_exports(FakeContext(page), page, {"audit"}, lambda _: None, result)
+    assert page.visited == [connect.MYSAU_URL]  # back home first, wherever the last export left it
+    assert page.clicked == ["Student", "Academics", "Academics"]  # one retry, then give up
+    assert result.audit_pdf is None
+    assert result.errors == {"audit": "audit_export:academics_link failed (Error: more_than_one_match)"}
+
+
+def test_a_menu_click_that_fails_once_is_tried_again():
+    page = FakeMySAU(breaks_on="Academics", breaks=1)
+    connect.click_nav(page, "Academics")
+    assert page.clicked == ["Academics", "Academics"]
+
+
+def test_a_menu_click_that_times_out_is_not_retried():
+    class TimingOut(FakeMySAU):
+        def get_by_role(self, role, name, exact=False):
+            locator = FakeLocator(self, role, name)
+
+            def click():
+                self.clicked.append(name)
+                raise connect_timeout("Locator.click: Timeout 60000ms exceeded.")
+
+            locator.click = click
+            return locator
+
+    from playwright.sync_api import TimeoutError as connect_timeout
+
+    page = TimingOut()
+    with pytest.raises(connect_timeout):
+        connect.click_nav(page, "Academics")
+    assert page.clicked == ["Academics"]  # a 60 s wait already happened; don't double it
+
+
+def test_unknown_playwright_errors_keep_only_playwrights_own_wording():
+    from playwright.sync_api import Error as PlaywrightError
+
+    cases = {
+        "Locator.click: Element is outside of the viewport\nCall log:\n  - <a href='/ICS/x'>Private Person</a>":
+            "x failed (Error: Locator.click: Element is outside of the viewport)",
+        'Locator.click: Unexpected thing at get_by_role("link", name="Private Person, ID 123")':
+            "x failed (Error: Locator.click: Unexpected thing at get_by_role)",
+        "Page.goto: something odd at https://my.saumag.edu/ICS/?token=abc":
+            "x failed (Error: Page.goto: something odd at)",
+        "<html>Name: Private Person</html>": "x failed (Error)",
+    }
+    for message, stored in cases.items():
+        assert str(ConnectError("x", PlaywrightError(message))) == stored
+    assert len(str(ConnectError("x", PlaywrightError("Locator.click: " + "word " * 50)))) < 110
+    # Errors that aren't Playwright's never get a summary.
+    assert str(ConnectError("x", ValueError("Locator.click: Private Person"))) == "x failed (ValueError)"
+
+
+def test_a_failed_audit_export_keeps_the_course_schedule():
+    def broken_audit(context, page, mark):
+        mark("printable_link")
+        raise Error("Timeout waiting for <a>Printable Degree Audit for Private Person</a>")
+
+    exports = {
+        "sections": ("sections_export", "", lambda c, p, mark: b"csv", "sections_csv"),
+        "audit": ("audit_export", "", broken_audit, "audit_pdf"),
+    }
+    result = Captured()
+    connect.run_exports(None, None, {"sections", "audit"}, lambda _: None, result, exports=exports)
+    assert result.sections_csv == b"csv"
+    assert result.errors == {"audit": "audit_export:printable_link failed (Error)"}
+
+
+def test_a_failed_course_schedule_export_still_runs_the_audit():
+    def broken_sections(context, page, mark):
+        mark("csv_capture")
+        raise ConnectError("csv_not_received")
+
+    exports = {
+        "sections": ("sections_export", "", broken_sections, "sections_csv"),
+        "audit": ("audit_export", "", lambda c, p, mark: b"%PDF", "audit_pdf"),
+    }
+    result = Captured()
+    connect.run_exports(None, None, {"sections", "audit"}, lambda _: None, result, exports=exports)
+    assert result.audit_pdf == b"%PDF"
+    assert result.errors == {"sections": "sections_export:csv_capture failed (csv_not_received)"}
+
+
+def test_each_kind_gets_its_own_result(monkeypatch, finished):
+    monkeypatch.setattr(run, "import_export_bytes",
+                        lambda data: SimpleNamespace(parsed=SimpleNamespace(sections=[1, 2, 3])))
+    captured = Captured(sections_csv=b"csv",
+                        errors={"audit": "audit_export:academics_link failed (Error: more_than_one_match)"})
+    run_ids = ids()
+    run.run_connect(uuid.uuid4(), ["sections", "audit"], run_ids, browser=lambda f, s: captured)
+    assert finished[run_ids["sections"]] == {"ok": True, "rows_changed": 3}
+    assert finished[run_ids["audit"]] == {
+        "ok": False, "error": "audit_export:academics_link failed (Error: more_than_one_match)"}
 
 
 # --- endpoint -----------------------------------------------------------------------------

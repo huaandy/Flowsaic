@@ -12,10 +12,15 @@ Conflicts block saving; warnings don't. Each item: { code, section_ids, message 
 | Section is full                                              | Warning  | section_full      |
 | Course isn't on the student's plan                           | Warning  | not_on_plan       |
 | Total credits over 18                                        | Warning  | over_credit_limit |
+| A section meets during a fixed calendar event                | Conflict | commitment_overlap |
+| A section meets during a flexible calendar event             | Warning  | commitment_overlap_flexible |
 
 Overlap: same day and start_a < end_b and start_b < end_a. Online/TBA sections (no days or
 times) never overlap. Lecture/lab pairing isn't enforced. F and W never count as passed.
 A course in the same schedule doesn't satisfy a prereq (it has to be passed or in progress).
+Calendar events have a weekday, not a date, so every event is a weekly block. Commitment
+messages name the event's category, never its title (titles are the student's own words,
+and checker messages also go to Gemini). Commitment items also carry the event's id.
 
 check_schedule() is pure; load_check_context() reads the database.
 """
@@ -28,6 +33,7 @@ from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.models import (
+    CalendarEvent,
     CompletedCourse,
     Course,
     CoursePrereq,
@@ -86,11 +92,32 @@ class PlanScope:
 
 
 @dataclass
+class Commitment:
+    """A calendar event as the checker sees it: a weekly block, fixed or flexible."""
+
+    id: uuid.UUID
+    day: str  # one letter of MTWRF
+    start: time
+    end: time
+    category: str
+    fixed: bool
+
+    @property
+    def what(self) -> str:
+        kind = CATEGORY_WORDS.get(self.category, "personal")
+        return f"{kind} commitment" if self.fixed else f"flexible {kind} commitment"
+
+
+CATEGORY_WORDS = {"work": "work", "personal_study": "personal/study", "extracurricular": "extracurricular"}
+
+
+@dataclass
 class StudentContext:
     passed: dict[str, float]
     in_progress: dict[str, float]
     prereqs: dict[str, list[list[str]]]
     plan: PlanScope | None
+    commitments: list[Commitment] = field(default_factory=list)
 
 
 def ordered_days(days: set[str]) -> str:
@@ -107,8 +134,17 @@ def overlap(a: SectionInfo, b: SectionInfo) -> str | None:
     return None
 
 
-def item(code: str, sections: list[SectionInfo], message: str) -> dict:
-    return {"code": code, "section_ids": [s.id for s in sections], "message": message}
+def item(code: str, sections: list[SectionInfo], message: str, event_ids: list[uuid.UUID] | None = None) -> dict:
+    """One conflict or warning. Commitment items also carry event_ids."""
+    result = {"code": code, "section_ids": [s.id for s in sections], "message": message}
+    if event_ids:
+        result["event_ids"] = event_ids
+    return result
+
+
+def meets_during(section: SectionInfo, commitment: Commitment) -> bool:
+    return (section.meets and commitment.day in section.days
+            and section.start < commitment.end and commitment.start < section.end)
 
 
 def hours_text(value: float) -> str:
@@ -158,6 +194,18 @@ def check_schedule(sections: list[SectionInfo], student: StudentContext, credit_
             if section.capacity and section.enrolled >= section.capacity:
                 warnings.append(item("section_full", [section],
                                      f"{section.label} is full ({section.enrolled}/{section.capacity} enrolled)"))
+
+    # commitment_overlap (fixed events) / commitment_overlap_flexible (the rest).
+    for section in sections:
+        for c in student.commitments:
+            if meets_during(section, c):
+                when = f"{c.day} {c.start:%H:%M}-{c.end:%H:%M}"
+                if c.fixed:
+                    conflicts.append(item("commitment_overlap", [section],
+                                          f"{section.label} meets during your {c.what} ({when})", [c.id]))
+                else:
+                    warnings.append(item("commitment_overlap_flexible", [section],
+                                         f"{section.label} overlaps your {c.what} ({when})", [c.id]))
 
     # over_credit_limit: each course once.
     total = sum(group[0].credits for group in by_code.values())
@@ -239,8 +287,13 @@ def load_student_context(session, student_id: uuid.UUID) -> StudentContext:
         ))
         electives = [e for g in groups for e in parse_electives(g.note)]
         plan = PlanScope(codes, electives, has_open_electives=any(e.unrestricted for e in electives))
+    commitments = [
+        Commitment(e.id, e.day, e.start_time, e.end_time, e.category, e.fixed)
+        for e in session.scalars(select(CalendarEvent).where(CalendarEvent.student_id == student_id))
+    ]
     return StudentContext(passed, in_progress,
-                          {code: [groups_[k] for k in sorted(groups_)] for code, groups_ in prereqs.items()}, plan)
+                          {code: [groups_[k] for k in sorted(groups_)] for code, groups_ in prereqs.items()}, plan,
+                          commitments)
 
 
 def check_for_student(student_id: uuid.UUID, section_ids: list[uuid.UUID], term_id: uuid.UUID | None = None) -> dict:
