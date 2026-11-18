@@ -2,8 +2,8 @@
 import { ApiError } from './client'
 
 const MESSAGES: Record<string, string> = {
-  network_error: 'Can’t reach Flowsaic. Is the backend running?',
-  server_error: 'Something went wrong on the server. Try again in a moment.',
+  network_error: 'Can’t reach Flowsaic. Make sure the start.cmd window is still open (double-click start.cmd if not), wait 10 seconds and refresh.',
+  server_error: 'Something went wrong on the server. Try again; if it keeps happening, close the start.cmd window and double-click start.cmd.',
   not_authenticated: 'Your session ended. Please sign in again.',
   invalid_credentials: 'That username or email isn’t a Flowsaic account. Try 1–5.',
   invalid_request: 'Some of that information isn’t valid. Check it and try again.',
@@ -17,8 +17,8 @@ const MESSAGES: Record<string, string> = {
   event_not_found: 'That event no longer exists.',
   too_many_events: 'Your calendar is full (60 events). Remove one first.',
   invalid_credit_range: 'Minimum credits can’t be more than maximum credits.',
-  gemini_model_not_set: 'Flow isn’t set up on this laptop yet (no Gemini model in .env).',
-  ai_unavailable: 'Flow can’t be reached right now. Try again in a moment.',
+  gemini_model_not_set: 'Flow isn’t set up on this laptop yet. Double-click setup.cmd (it adds the missing setting), then restart start.cmd.',
+  ai_unavailable: 'Flow can’t be reached right now. Check your internet connection and send it again.',
   connect_already_running: 'A mySAU connect is already running. Finish signing in there.',
   student_not_found: 'Your account wasn’t found. Please sign in again.',
 }

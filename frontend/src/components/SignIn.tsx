@@ -17,7 +17,7 @@ export function SignIn({ onSignIn, signedOutNote }: { onSignIn: (username: strin
     } catch (caught) {
       setError(caught instanceof ApiError && caught.code === 'invalid_credentials'
         ? 'That isn’t a Flowsaic account. Use 1–5 or a demo email.'
-        : caught instanceof ApiError && caught.code === 'network_error' ? 'Can’t reach Flowsaic. Is the backend running?' : 'Sign-in failed. Try again.')
+        : caught instanceof ApiError && caught.code === 'network_error' ? 'Can’t reach Flowsaic. Make sure the start.cmd window is still open (double-click start.cmd if not), wait 10 seconds and try again.' : 'Sign-in failed. Try again.')
     } finally {
       setBusy(false)
     }

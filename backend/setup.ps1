@@ -19,6 +19,7 @@ param(
 # Native tools (uv, docker) write progress to stderr; never treat that as a failure.
 # Every step checks the exit code instead.
 $ErrorActionPreference = "Continue"
+$DefaultGeminiModel = "gemini-3.8-flash"  # keep in step with backend/.env.example
 $Backend = $PSScriptRoot
 $Repo = Split-Path $Backend -Parent
 Set-Location $Backend
@@ -30,7 +31,7 @@ function Stop-Setup($text) {
     Write-Host ""
     Write-Host "SETUP STOPPED: $text" -ForegroundColor Red
     Write-Host "Do what the red line says, then double-click setup.cmd again (it's safe to run as often as you like)."
-    Write-Host "Stuck? See Troubleshooting in README.md, or send the red line to the team chat."
+    Write-Host "Stuck? Find this message under Troubleshooting in README.md (in your Flowsaic folder); it lists the exact steps."
     exit 1
 }
 function Ask($question, [bool]$default) {
@@ -174,14 +175,18 @@ if (-not (Get-EnvValue "DATABASE_URL")) {
 }
 $key = Get-EnvValue "GEMINI_API_KEY"
 if ((-not $key) -or ($key -eq "your-gemini-api-key")) {
-    Warn "No Gemini API key. Flow (the AI advisor) and course search need one; Victor has it."
+    Warn "No Gemini API key. Flow (the AI advisor) and course search need one."
+    Write-Host "   If your .env has one, copy the text after GEMINI_API_KEY= and paste it below."
+    Write-Host "   No key? Get a free one: open https://aistudio.google.com/apikey, sign in with Google,"
+    Write-Host "   click 'Create API key' and copy it. (Enter skips it; run setup again later to add it.)"
     $secure = Read-Host "   Paste the Gemini API key (or press Enter to skip)" -AsSecureString
     $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
     if ($plain) { Add-EnvSetting "GEMINI_API_KEY" $plain.Trim(); Ok "Saved the key in $envTarget" }
 }
 if (-not (Get-EnvValue "GEMINI_MODEL")) {
-    $model = Read-Host "   Gemini model name, as in Victor's .env (or press Enter to skip)"
-    if ($model) { Add-EnvSetting "GEMINI_MODEL" $model.Trim(); Ok "Saved the model name" }
+    # The model Flowsaic is built and tested with; nothing to look up.
+    Add-EnvSetting "GEMINI_MODEL" $DefaultGeminiModel
+    Ok "Added GEMINI_MODEL=$DefaultGeminiModel to $envTarget"
 }
 $key = Get-EnvValue "GEMINI_API_KEY"
 $hasKey = [bool]$key -and ($key -ne "your-gemini-api-key")
@@ -321,7 +326,9 @@ Pop-Location
 if ($testsOk -and $typesOk) {
     Ok "Self-test passed"
 } else {
-    Warn "Part of the self-test failed (backend tests: $testsOk, front end: $typesOk). Flowsaic may still run; tell the team chat."
+    Warn "Part of the self-test failed (backend tests: $testsOk, front end: $typesOk). Flowsaic often still runs with start.cmd."
+    Write-Host "   To fix it: close this window and double-click setup.cmd again. If it still fails, get the newest"
+    Write-Host "   version (GitHub Desktop: Fetch origin, then Pull origin; or 'git pull' in the Flowsaic folder) and run setup again."
 }
 
 Write-Host ""
