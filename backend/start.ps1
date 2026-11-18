@@ -10,12 +10,19 @@
     -FrontendPort 8444  the front end's port (default 8443)
     -BackendOnly        don't start the front end; opens the backend's test page instead
     -NoBrowser          don't open the browser
+    -Dev                for editing the code: the backend reloads when a .py file changes, and the
+                        front end runs in its own (minimized) window
+
+  Why no auto-reload by default (Nov 18): on Windows, uvicorn restarts its worker by sending
+  Ctrl+C to the whole console window. With Vite in the same window, every reload killed the
+  website ("Can't reach Flowsaic") and cut off a running mySAU connect.
 #>
 param(
     [int]$Port = 8000,
     [int]$FrontendPort = 8443,
     [switch]$BackendOnly,
-    [switch]$NoBrowser
+    [switch]$NoBrowser,
+    [switch]$Dev
 )
 $ErrorActionPreference = "Continue"
 $Url = "http://127.0.0.1:$Port/"
@@ -152,14 +159,20 @@ if (-not $backendUp) {
 }
 
 # --- the front end -------------------------------------------------------------------------------
-# Vite runs in this same window: Ctrl+C or closing the window stops it along with the backend.
+# Normally Vite runs in this same window: Ctrl+C or closing the window stops it along with the
+# backend, and nothing else sends Ctrl+C here (the backend doesn't auto-reload). With -Dev the
+# backend reloads, and a reload's Ctrl+C would reach Vite, so Vite gets its own minimized window.
 # It forwards /api/... to the backend on -Port (BACKEND_URL), so the cookie stays on one origin.
 $vite = $null
 if (-not $frontendUp) {
     $env:BACKEND_URL = "http://127.0.0.1:$Port"
     $env:PORT = "$FrontendPort"
     $env:VITE_CONFIG_NATIVE_IGNORE_WARNING = "true"
-    $vite = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm run dev" -WorkingDirectory $Frontend -NoNewWindow -PassThru
+    if ($Dev) {
+        $vite = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "title Flowsaic website (Vite) && npm run dev" -WorkingDirectory $Frontend -WindowStyle Minimized -PassThru
+    } else {
+        $vite = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm run dev" -WorkingDirectory $Frontend -NoNewWindow -PassThru
+    }
 }
 Open-WhenReady $openUrl ($Url + "health")
 
@@ -173,9 +186,16 @@ try {
         Write-Host "The backend was already running at $Url; only the front end runs in this window."
         if ($vite) { $vite.WaitForExit() }
     } else {
-        uv run fastapi dev app/main.py --port $Port
+        if ($Dev) {
+            Write-Host "Dev mode: the backend reloads when you save a .py file (don't save during a mySAU connect)." -ForegroundColor Yellow
+            uv run fastapi dev app/main.py --host 127.0.0.1 --port $Port
+        } else {
+            # No auto-reload: nothing restarts the backend under a running mySAU connect or the website.
+            # 127.0.0.1 keeps it on this laptop only (fastapi run would otherwise listen on the network).
+            uv run fastapi run app/main.py --host 127.0.0.1 --port $Port
+        }
     }
 } finally {
-    # Vite usually stops with Ctrl+C too; make sure it doesn't outlive the window.
+    # Vite usually stops with Ctrl+C too (in -Dev it has its own window); make sure it doesn't outlive this one.
     if ($vite -and -not $vite.HasExited) { cmd /c "taskkill /PID $($vite.Id) /T /F >nul 2>&1" }
 }

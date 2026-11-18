@@ -87,11 +87,15 @@ Find the message you saw below and follow its steps. After a fix, double-click t
 - **The page says "Can't reach Flowsaic":**
   - Make sure the black `start.cmd` window is still open; if you closed it, double-click `start.cmd` again.
   - If it's open, the backend may still be starting: wait 10 seconds and refresh the page.
+  - Still there? Close **every** `start.cmd` window (an old one from before a pull can still be running), then double-click `start.cmd` once.
 - **Flow says "Flow isn't set up on this laptop yet":** your `.env` has no Gemini model. Double-click `setup.cmd` again; it adds the missing setting. Then close the `start.cmd` window and double-click `start.cmd`.
 - **Flow says "Flow can't be reached right now":** check your internet connection and send the message again. If it keeps happening, the Gemini key in your `.env` may be wrong; get a new one (step 2), paste it in place of the old one after `GEMINI_API_KEY=`, and restart `start.cmd`.
 - **Red "proxy error ... ECONNREFUSED" lines right after start:** harmless. The website is ready a few seconds before the backend; the lines stop on their own.
 - **Connect mySAU (users 4 and 5) opens a separate browser window:** that's expected. Sign in to mySAU there yourself; you have 5 minutes. Flowsaic never sees your password.
+- **Connect mySAU says it failed with "interrupted: the server stopped":** the `start.cmd` window was closed or restarted while you were signing in. Double-click `start.cmd` and click Connect mySAU again.
 
 ## For developers
 
 Everything else (architecture, rules for AI assistants, the API, data loading, decisions) is in [AGENTS.md](AGENTS.md). Live API docs are at http://127.0.0.1:8000/docs while Flowsaic runs.
+
+Editing the code? Run `start.cmd -Dev`: the backend restarts whenever you save a `.py` file, and the website runs in its own minimized window. Plain `start.cmd` never restarts by itself, so a running Connect mySAU is never cut off. Don't save `.py` files during a connect in `-Dev` mode.
