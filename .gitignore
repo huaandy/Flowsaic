@@ -11,6 +11,8 @@
 *.sqlite
 *.db
 data/private/
+# Degree audits and other PDFs can hold student records. The app never writes them to disk.
+*.pdf
 
 # Python
 __pycache__/

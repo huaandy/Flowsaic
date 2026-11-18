@@ -22,6 +22,7 @@ from app.normalize import (
         ("HC 4013 001H", ("HC 4013", "001H")),
         ("SCM6003 029", ("SCM 6003", "029")),  # missing space is inserted
         ("E ED 4173 029", ("E ED 4173", "029")),  # two-part prefix
+        ("AGED 2012 001  L", ("AGED 2012", "001L")),  # mySAU raw export lab section
     ],
 )
 def test_split_course_section(raw, expected):

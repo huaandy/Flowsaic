@@ -9,6 +9,7 @@ Only the typed question and public course text are sent to Gemini. Never student
 
 import uuid
 from datetime import datetime, time
+from decimal import Decimal
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query
@@ -198,6 +199,10 @@ def display_value(column_name: str, value):
         return value.isoformat(timespec="seconds")
     if isinstance(value, str | uuid.UUID):
         return str(value)
+    if isinstance(value, Decimal):  # credits and hours, e.g. 3.00
+        return float(value)
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return ", ".join(value)  # a text[] column, e.g. course_options
     # An embedding: 768 numbers. Show the first few and the count.
     numbers = [float(number) for number in value]
     preview = ", ".join(f"{number:.4f}" for number in numbers[:4])

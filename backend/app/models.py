@@ -8,15 +8,18 @@ are not offered this term.
 
 import uuid
 from datetime import datetime, time
+from decimal import Decimal
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     Integer,
     MetaData,
+    Numeric,
     Text,
     Time,
     UniqueConstraint,
@@ -24,6 +27,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # gemini-embedding-2 requested at 768 dimensions. Changing this needs a migration
@@ -38,6 +42,9 @@ NAMING_CONVENTION = {
     "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
     "pk": "pk_%(table_name)s",
 }
+
+# Credits and hours from the degree audit can be fractional (e.g. 3.00, 0.50).
+HOURS = Numeric(5, 2)
 
 
 class Base(DeclarativeBase):
@@ -58,6 +65,8 @@ class Term(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     code: Mapped[str] = mapped_column(Text, unique=True)
     name: Mapped[str] = mapped_column(Text)
+    # The term the latest mySAU Course Schedule export covers (open for registration).
+    is_current_registration: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
 
 
 class Course(Base):
@@ -108,6 +117,9 @@ class Section(Base):
     division: Mapped[str | None] = mapped_column(Text)
     enrolled: Mapped[int] = mapped_column(Integer, server_default="0")
     capacity: Mapped[int] = mapped_column(Integer, server_default="0")
+    # A section missing from a newer export is set inactive, never deleted, because
+    # saved schedules point at it.
+    active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
 
 
 class DegreePlan(Base):
@@ -120,6 +132,9 @@ class DegreePlan(Base):
     name: Mapped[str] = mapped_column(Text)
     catalog_year: Mapped[str] = mapped_column(Text)
     total_hours: Mapped[int] = mapped_column(Integer)
+    # Set by scrape_degree_maps.py; null for plans entered by hand.
+    source_url: Mapped[str | None] = mapped_column(Text)
+    scraped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class RequirementGroup(Base):
@@ -139,6 +154,9 @@ class RequirementGroup(Base):
     rule: Mapped[str] = mapped_column(Text)
     hours_required: Mapped[int | None] = mapped_column(Integer)
     sort_order: Mapped[int] = mapped_column(Integer, server_default="0")
+    # Rules that are not a course list, e.g. "may only include one course in Art".
+    # Shown as text, not enforced.
+    note: Mapped[str | None] = mapped_column(Text)
 
 
 class RequirementCourse(Base):
@@ -163,19 +181,73 @@ class Student(Base):
     password: Mapped[str] = mapped_column(Text)
     degree_plan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("degree_plans.id"))
     classification: Mapped[str | None] = mapped_column(Text)
+    # Filled from the mySAU degree audit. The audit header (name, ID, address, phones,
+    # advisor, GPA) is never stored, and holds are only a yes/no: a hold's name can
+    # reveal a balance owed.
+    major: Mapped[str | None] = mapped_column(Text)
+    catalog_year: Mapped[str | None] = mapped_column(Text)
+    has_hold: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    total_hours_earned: Mapped[Decimal | None] = mapped_column(HOURS)
+    total_hours_needed: Mapped[Decimal | None] = mapped_column(HOURS)
+    audit_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class CompletedCourse(Base):
-    """A course a student has finished or is taking now."""
+    """A course a student has finished or is taking now.
+
+    One row per course line. The same course can appear more than once (it counts toward
+    two requirements, it was retaken, or it is both self-reported and on the audit), so
+    the key is a plain id. A mySAU refresh replaces only the student's source='audit' rows.
+    """
 
     __tablename__ = "completed_courses"
-    __table_args__ = (CheckConstraint("status IN ('completed', 'in_progress')", name="status"),)
-
-    student_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("students.id", ondelete="CASCADE"), primary_key=True
+    __table_args__ = (
+        CheckConstraint("status IN ('completed', 'in_progress')", name="status"),
+        CheckConstraint("source IN ('audit', 'self_reported', 'manual')", name="source"),
+        Index("ix_completed_courses_student_id", "student_id"),
     )
-    course_code: Mapped[str] = mapped_column(Text, primary_key=True)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"))
+    course_code: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text)
+    grade: Mapped[str | None] = mapped_column(Text)
+    credits: Mapped[Decimal | None] = mapped_column(HOURS)
+    term: Mapped[str | None] = mapped_column(Text)  # as the audit prints it, e.g. "2024 1S"
+    source: Mapped[str] = mapped_column(Text, server_default="manual")
+    # The audit requirement this line counts toward. Null for "Nonapplied Coursework"
+    # and for rows not from the audit.
+    requirement_name: Mapped[str | None] = mapped_column(Text)
+
+
+class StudentRequirement(Base):
+    """One requirement block from a student's mySAU degree audit.
+
+    For a student who has connected mySAU, these rows ARE their degree plan (for their
+    own catalog year). Public degree_plans are the fallback for everyone else.
+    """
+
+    __tablename__ = "student_requirements"
+    __table_args__ = (
+        CheckConstraint("status IN ('met', 'not_met', 'in_progress')", name="status"),
+        CheckConstraint("rule IN ('all', 'choose_hours')", name="rule"),
+        Index("ix_student_requirements_student_id", "student_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(Text)
+    parent_name: Mapped[str | None] = mapped_column(Text)  # null for a top-level block
+    status: Mapped[str] = mapped_column(Text)
+    rule: Mapped[str] = mapped_column(Text, server_default="all")
+    hours_earned: Mapped[Decimal | None] = mapped_column(HOURS)
+    hours_required: Mapped[Decimal | None] = mapped_column(HOURS)
+    # The "Select N hours from..." list, or the required courses. Course codes as text.
+    course_options: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), server_default=text("'{}'::text[]")
+    )
+    note: Mapped[str | None] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer, server_default="0")
 
 
 class Schedule(Base):
@@ -225,4 +297,34 @@ class DocChunk(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, server_default="0")
     content: Mapped[str] = mapped_column(Text)
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM))
+    # sha256 hex of content. The embed script re-embeds a chunk only when this changes.
+    content_hash: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RefreshRun(Base):
+    """One data refresh: a public scrape, or a student's mySAU connect.
+
+    error is a short message only, never page content.
+    """
+
+    __tablename__ = "refresh_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('course_info', 'degree_maps', 'sections', 'audit')", name="kind"
+        ),
+        CheckConstraint("status IN ('running', 'ok', 'failed')", name="status"),
+        Index("ix_refresh_runs_kind", "kind", "started_at"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    kind: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default="running")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rows_changed: Mapped[int | None] = mapped_column(Integer)
+    error: Mapped[str | None] = mapped_column(Text)
+    # Null for public runs.
+    student_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("students.id", ondelete="CASCADE")
+    )

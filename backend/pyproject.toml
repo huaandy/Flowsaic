@@ -5,10 +5,13 @@ description = "Flowsaic backend: FastAPI, Postgres + pgvector, Gemini"
 requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.20.1",
+    "beautifulsoup4>=4.15.0",
     "fastapi[standard]>=0.163.1",
     "google-genai>=3.3.0",
     "pandas>=3.1.1",
+    "pdfplumber>=0.11.10",
     "pgvector>=0.5.1",
+    "playwright>=1.65.2",
     "psycopg[binary]>=3.3.9",
     "pydantic-settings>=2.16.3",
     "sqlalchemy>=2.1.8",

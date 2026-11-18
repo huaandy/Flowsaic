@@ -25,8 +25,13 @@ def normalize_course_code(raw: str) -> str:
 
 
 def split_course_section(raw: str) -> tuple[str, str]:
-    """'ACCT 2003 001' -> ('ACCT 2003', '001'). The last token is the section."""
+    """'ACCT 2003 001' -> ('ACCT 2003', '001'). The last token is the section.
+
+    mySAU's raw export writes lab sections as '001  L'; that is section '001L'.
+    """
     tokens = raw.split()
+    if len(tokens) >= 3 and re.fullmatch(r"[A-Z]", tokens[-1]) and re.fullmatch(r"\d{3}", tokens[-2]):
+        tokens = tokens[:-2] + [tokens[-2] + tokens[-1]]
     if len(tokens) < 2:
         raise ValueError(f"course_section has no section number: {raw!r}")
     section_number = tokens[-1]
