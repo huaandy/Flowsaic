@@ -21,6 +21,7 @@ const MESSAGES: Record<string, string> = {
   ai_unavailable: 'Flow can’t be reached right now. Check your internet connection and send it again.',
   connect_already_running: 'A mySAU connect is already running. Finish signing in there.',
   student_not_found: 'Your account wasn’t found. Please sign in again.',
+  pdf_unavailable: 'The schedule PDF can’t be made on this laptop yet. Double-click setup.cmd (it installs the browser Flowsaic uses), then restart start.cmd.',
 }
 
 export function friendlyError(error: unknown, fallback = 'Something went wrong. Try again.') {

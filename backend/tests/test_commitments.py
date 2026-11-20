@@ -137,7 +137,7 @@ def test_record_lists_commitments_and_preferences_without_titles():
     data.context.commitments = [commitment("T", (15, 0), (18, 0)), commitment("M", (11, 30), (12, 30), fixed=False,
                                                                                 category="extracurricular")]
     data.preferences = {**planning.DEFAULT_PREFERENCES, "preferred_time": "midday", "preferred_days": "MTWR",
-                        "max_credits": 16, "delivery": ["in_person"], "flexibility": "strict",
+                        "min_credits": 12, "max_credits": 16, "delivery": ["in_person"], "flexibility": "strict",
                         "updated_at": "2026-11-18T12:00:00Z"}
     record = build_student_record(data)
     assert "- flexible extracurricular: M 11:30-12:30" in record
@@ -172,6 +172,24 @@ def test_the_request_body_overrides_saved_preferences():
     assert (merged.preferred_time, merged.delivery, merged.preferred_days) == ("evening", ["online"], "MW")
     assert merged.min_credits == 15  # never above the saved maximum
     assert "Online sections only." in ai.preferences_message(merged)
+
+
+def test_a_saved_minimum_of_zero_means_no_minimum():
+    # Nov 20: new and returning students start at 0 = no minimum. Auto-generate keeps its usual
+    # target instead of building a one-course schedule, and the request says "Up to 18 credits".
+    from app.suggest import SuggestRequest, constraints_for
+
+    saved = {**SAVED, "min_credits": 0, "max_credits": 18}
+    merged, _ = ai.with_saved(ai.Preferences(), saved)
+    assert (merged.min_credits, merged.max_credits) == (None, 18)
+    assert "Up to 18 credits." in ai.preferences_message(merged)
+    c = constraints_for(SuggestRequest(min_credits=merged.min_credits, max_credits=merged.max_credits), [])
+    assert (c.min_credits, c.max_credits) == (12, 18)
+    # A minimum typed into the form still wins.
+    merged, _ = ai.with_saved(ai.Preferences.model_validate({"min_credits": 9}), saved)
+    assert merged.min_credits == 9
+    # Flow's record says it in words.
+    assert "no minimum, up to 18 credits" in preference_line(saved)
 
 
 def test_nothing_saved_means_the_form_alone():

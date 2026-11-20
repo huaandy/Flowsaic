@@ -1,29 +1,40 @@
 """The three fake demo students for the Dec 7 demo. Run by db/scripts/seed_demo.py.
 
 Each one is built around real Spring 2027 sections so the demo shows real results:
-- Alex Rivera, Computer Science junior: the main demo. Lots of choices, real time
+- Andy Hua (user 1), Computer Science junior: the main demo. Lots of choices, real time
   overlaps (CSCI 4203 / MATH 3043-002 on MW 14:10), a full section (MATH 3043-001),
   a missing prereq (CSCI 4932 needs CSCI 4922), a prereq met by a course in progress
-  (CSCI 3143 needs CSCI 3213).
-- Jordan Brooks, General Business freshman in their first semester: almost everything
-  "not met" or in progress. MGMT 2003 needs ENGL 1123 (missing prereq even if both are
-  on the same schedule); ACCT 2003-001 and ECON 2103-001 overlap on MWF 09:00.
-- Sam Okafor, Psychology senior: nearly done. Failed PSYC 3183 (an F row) and is
-  retaking it, so anything counting completed courses must look at the grade.
+  (CSCI 3143 needs CSCI 3213). Fixed practice MWF 15:00-17:00 blocks CSCI 4203 and
+  MATH 3043-002; a flexible study group (T 16:00) only warns on CSCI 3143.
+- Aaron Ezell (user 2), General Business freshman in their first semester: almost
+  everything "not met" or in progress. MGMT 2003 needs ENGL 1123 (missing prereq even if
+  both are on the same schedule); ACCT 2003-001 and ECON 2103-001 overlap on MWF 09:00, and
+  both fall in the fixed weekday-morning work shift (07:00-09:30). Flexible intramurals
+  (T 14:00) warn on ENGL 1123-010 and IS 2053-002.
+- Victor Santamaria (user 3), Psychology senior: nearly done. Failed PSYC 3183 (an F row)
+  and is retaking it, so anything counting completed courses must look at the grade. A
+  fixed part-time job TR 13:00-17:00 blocks PSYC 3153-001; a flexible study block
+  (W 09:30) warns on PSYC 4043-001.
+
+The names are the team's (Nov 20), but every record is made up: plans, courses, grades,
+commitments and the @demo.flowsaic.test emails. Before Nov 20 they were Alex Rivera, Jordan
+Brooks and Sam Okafor; a seed run renames those rows in place (matched on the old email).
 - Returning Student (user 4 on the login page): filled by Connect mySAU and kept, across
   restarts, sign-outs and seed runs (`clear_returning` empties it).
 - New Student (user 5): filled by Connect mySAU, emptied at startup, sign-in, sign-out and
   on every seed run, so it is a first-time student every time.
 
-All names and emails are made up. Re-running updates the students in place (matched on
-email) and replaces only their source='manual' course rows. Nothing is written unless
-every degree plan and every course code is in the database.
+Re-running updates the students in place (matched on email) and replaces only their
+source='manual' course rows, their seeded calendar events (matched on title, so events a
+student added are kept) and their preferences row. Nothing is written unless every degree
+plan and every course code is in the database.
 """
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import time
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db import SessionLocal
@@ -62,12 +73,48 @@ class DemoCourse:
 
 
 @dataclass(frozen=True)
+class DemoEvent:
+    """A seeded weekly commitment. Fixed ones are checker conflicts, flexible ones warnings."""
+
+    title: str
+    day: str  # one letter of MTWRF
+    start: time
+    end: time
+    category: str  # work | personal_study | extracurricular
+    fixed: bool
+
+    def row(self, student_id: uuid.UUID) -> dict:
+        return {"student_id": student_id, "title": self.title, "day": self.day, "start_time": self.start,
+                "end_time": self.end, "location": None, "category": self.category, "recurrence": "weekly",
+                "priority": "high" if self.fixed else "normal", "fixed": self.fixed}
+
+
+@dataclass(frozen=True)
+class DemoPreferences:
+    preferred_time: str = "none"
+    preferred_days: str = ""
+    min_credits: int = 12
+    max_credits: int = 18
+    delivery: tuple[str, ...] = ("in_person", "online")
+    flexibility: str = "balanced"
+
+
+def _weekly(title: str, days: str, start: tuple[int, int], end: tuple[int, int], category: str,
+            fixed: bool) -> tuple[DemoEvent, ...]:
+    """One event per day (an event has a single weekday)."""
+    return tuple(DemoEvent(title, day, time(*start), time(*end), category, fixed) for day in days)
+
+
+@dataclass(frozen=True)
 class DemoStudent:
     name: str
     email: str
     plan_name: str
     classification: str
     courses: tuple[DemoCourse, ...] = field(default=())
+    events: tuple[DemoEvent, ...] = field(default=())
+    preferences: DemoPreferences = field(default_factory=DemoPreferences)
+    old_emails: tuple[str, ...] = field(default=())  # pre-Nov 20 emails, renamed in place by the seed
 
     @property
     def earned_hours(self) -> int:
@@ -90,11 +137,17 @@ def _term(term: str, *rows: tuple[str, str | None] | str) -> list[DemoCourse]:
     return [DemoCourse(row, term) if isinstance(row, str) else DemoCourse(row[0], term, row[1]) for row in rows]
 
 
-ALEX = DemoStudent(
-    name="Alex Rivera",
-    email="alex.rivera@demo.flowsaic.test",
+ANDY = DemoStudent(
+    name="Andy Hua",
+    email="andy.hua@demo.flowsaic.test",
+    old_emails=("alex.rivera@demo.flowsaic.test",),
     plan_name="Computer Science, BS",
     classification="Junior",
+    # Fixed practice blocks CSCI 4203-001 and MATH 3043-002 (MW 14:10-15:30): commitment_overlap.
+    # The flexible study group overlaps CSCI 3143-001 (TR 15:40-17:00): commitment_overlap_flexible.
+    events=_weekly("Practice", "MWF", (15, 0), (17, 0), "extracurricular", True)
+    + _weekly("Study group", "T", (16, 0), (17, 0), "personal_study", False),
+    preferences=DemoPreferences(preferred_time="morning"),
     courses=tuple(
         _term("Spring 2024", ("MATH 1023", "A"))  # high school concurrent credit; MATH 3043 needs it
         + _term("Fall 2024", ("GSTD 1002", "A"), ("ENGL 1113", "A"), ("MATH 1525", "B"), ("CSCI 2103", "A"),
@@ -109,22 +162,36 @@ ALEX = DemoStudent(
     ),
 )
 
-JORDAN = DemoStudent(
-    name="Jordan Brooks",
-    email="jordan.brooks@demo.flowsaic.test",
+AARON = DemoStudent(
+    name="Aaron Ezell",
+    email="aaron.ezell@demo.flowsaic.test",
+    old_emails=("jordan.brooks@demo.flowsaic.test",),
     plan_name="Business Administration: General Business, BBA",
     classification="Freshman",
+    # The fixed shift blocks every MWF 08:00/09:00 section (ACCT 2003-001, ECON 2103-001,
+    # ENGL 1123-046...) but not the TR 09:30 ones. Flexible intramurals overlap
+    # ENGL 1123-010 and IS 2053-002 (TR 14:10-15:30).
+    events=_weekly("Work shift", "MTWRF", (7, 0), (9, 30), "work", True)
+    + _weekly("Intramurals", "T", (14, 0), (15, 30), "extracurricular", False),
+    preferences=DemoPreferences(preferred_time="afternoon", min_credits=12, delivery=("in_person", "online"),
+                                flexibility="strict"),
     courses=tuple(
         _term("Spring 2026", ("PSCI 2003", "A"))  # high school concurrent credit
         + _term(CURRENT_TERM, "GSTD 1002", "ENGL 1113", "MATH 1023", "ACCT 2113", "HIST 1013")
     ),
 )
 
-SAM = DemoStudent(
-    name="Sam Okafor",
-    email="sam.okafor@demo.flowsaic.test",
+VICTOR = DemoStudent(
+    name="Victor Santamaria",
+    email="victor.santamaria@demo.flowsaic.test",
+    old_emails=("sam.okafor@demo.flowsaic.test",),
     plan_name="Psychology, BS",
     classification="Senior",
+    # The fixed job blocks PSYC 3153-001 (TR 12:40-14:00); the flexible study block overlaps
+    # PSYC 4043-001 (MWF 10:00-10:50).
+    events=_weekly("Part-time job", "TR", (13, 0), (17, 0), "work", True)
+    + _weekly("Study block", "W", (9, 30), (11, 0), "personal_study", False),
+    preferences=DemoPreferences(preferred_days="MTWR", min_credits=12, max_credits=15, flexibility="balanced"),
     courses=tuple(
         _term("Fall 2023", ("GSTD 1002", "A"), ("ENGL 1113", "B"), ("MATH 1023", "B"), ("PSYC 2003", "A"),
               ("HIST 1003", "B"))
@@ -142,7 +209,7 @@ SAM = DemoStudent(
     ),
 )
 
-DEMO_STUDENTS: tuple[DemoStudent, ...] = (ALEX, JORDAN, SAM)
+DEMO_STUDENTS: tuple[DemoStudent, ...] = (ANDY, AARON, VICTOR)
 
 # Two placeholder accounts for "Connect mySAU" (course schedule + the person's own degree
 # audit). Neither has a public plan or fake courses; whatever they show came from mySAU.
@@ -192,6 +259,7 @@ class SeededStudent:
     completed: int
     in_progress: int
     earned_hours: int
+    events: int = 0
 
 
 def _clear_student(session, student_id, placeholder_name: str | None = None) -> None:
@@ -262,6 +330,37 @@ def _reset_new_student(session) -> SeededStudent:
     return SeededStudent(NEW_STUDENT_NAME, NEW_STUDENT_EMAIL, "(none until Connect mySAU)", "-", 0, 0, 0)
 
 
+def _rename_old_row(session, student: DemoStudent) -> None:
+    """A row still under a pre-Nov 20 email becomes this student (same id, so its saved
+    schedules stay), unless the new email already exists."""
+    if session.scalar(select(Student.id).where(Student.email == student.email)) is not None:
+        return
+    for old_email in student.old_emails:
+        renamed = session.execute(
+            update(Student).where(Student.email == old_email).values(email=student.email, name=student.name)
+        )
+        if renamed.rowcount:
+            return
+
+
+def _seed_planning(session, student_id: uuid.UUID, student: DemoStudent) -> None:
+    """Replace only the seeded calendar events (matched on title; events the student added
+    stay) and the preferences row."""
+    titles = {event.title for event in student.events}
+    if titles:
+        session.execute(delete(CalendarEvent).where(CalendarEvent.student_id == student_id,
+                                                    CalendarEvent.title.in_(titles)))
+        session.execute(insert(CalendarEvent), [event.row(student_id) for event in student.events])
+    prefs = student.preferences
+    values = {"preferred_time": prefs.preferred_time, "preferred_days": prefs.preferred_days,
+              "min_credits": prefs.min_credits, "max_credits": prefs.max_credits,
+              "delivery": list(prefs.delivery), "flexibility": prefs.flexibility}
+    session.execute(
+        insert(StudentPreferences).values(student_id=student_id, **values)
+        .on_conflict_do_update(index_elements=[StudentPreferences.student_id], set_={**values, "updated_at": func.now()})
+    )
+
+
 def seed_demo_students(
     students: tuple[DemoStudent, ...] = DEMO_STUDENTS, *, clear_returning: bool = False
 ) -> list[SeededStudent]:
@@ -293,6 +392,7 @@ def seed_demo_students(
             )
 
         for student in students:
+            _rename_old_row(session, student)
             values = {
                 "name": student.name,
                 "email": student.email,
@@ -326,6 +426,7 @@ def seed_demo_students(
                 )
                 for course in student.courses
             )
+            _seed_planning(session, student_id, student)
             results.append(
                 SeededStudent(
                     name=student.name,
@@ -335,6 +436,7 @@ def seed_demo_students(
                     completed=sum(c.status == "completed" for c in student.courses),
                     in_progress=sum(c.status == "in_progress" for c in student.courses),
                     earned_hours=student.earned_hours,
+                    events=len(student.events),
                 )
             )
         results.append(_seed_returning_student(session, clear_returning))

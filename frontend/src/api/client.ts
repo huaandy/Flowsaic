@@ -61,13 +61,52 @@ export async function request<T>(method: string, path: string, options: { body?:
   }
   if (!response.ok) {
     const body = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
-    // No { error } body on a 502-504 = the Vite proxy couldn't reach the backend at all.
-    const code = typeof body.error === 'string' ? body.error
-      : [502, 503, 504].includes(response.status) ? 'network_error' : response.status >= 500 ? 'server_error' : 'request_failed'
     if (response.status === 401 && !options.quiet401) unauthorizedHandler?.()
-    throw new ApiError(response.status, code, body)
+    throw errorFrom(response.status, body)
   }
   return data as T
+}
+
+function errorFrom(status: number, body: Record<string, unknown>) {
+  // No { error } body on a 502-504 = the Vite proxy couldn't reach the backend at all.
+  const code = typeof body.error === 'string' ? body.error
+    : [502, 503, 504].includes(status) ? 'network_error' : status >= 500 ? 'server_error' : 'request_failed'
+  return new ApiError(status, code, body)
+}
+
+/** A file from the backend (the schedule PDF): its bytes and the name the server gave it. */
+async function download(path: string, fallbackName: string): Promise<{ blob: Blob; filename: string }> {
+  let response: Response
+  try {
+    response = await fetch(BASE + path, { credentials: 'include' })
+  } catch {
+    throw new ApiError(0, 'network_error')
+  }
+  if (!response.ok) {
+    let body: Record<string, unknown> = {}
+    try {
+      const data = await response.json()
+      if (data && typeof data === 'object') body = data as Record<string, unknown>
+    } catch {
+      body = {}
+    }
+    if (response.status === 401) unauthorizedHandler?.()
+    throw errorFrom(response.status, body)
+  }
+  const match = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')
+  return { blob: await response.blob(), filename: match?.[1] ?? fallbackName }
+}
+
+/** Hand a downloaded file to the browser's own download (no new tab, nothing kept in memory). */
+export function saveFile(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 const get = <T>(path: string, query?: Query) => request<T>('GET', path, { query })
@@ -100,6 +139,7 @@ export const api = {
   createSchedule: (body: ApiSaveSchedule) => post<ApiScheduleDetail>('/schedules', body),
   updateSchedule: (id: Uuid, body: ApiSaveSchedule) => put<ApiScheduleDetail>(`/schedules/${id}`, body),
   deleteSchedule: (id: Uuid) => del(`/schedules/${id}`),
+  schedulePdf: (id: Uuid) => download(`/schedules/${id}/pdf`, 'flowsaic-schedule.pdf'),
 
   // planning
   events: () => get<ApiEvent[]>('/me/events'),

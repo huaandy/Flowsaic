@@ -4,7 +4,8 @@ Used by db/scripts/load_course_info.py and by the public data refresh. Re-runnin
 rows instead of duplicating them:
 - courses are matched on code; title, description and other_requirements are updated.
   department and credits are left alone (they come from the sections export).
-- each course's prereq rows are replaced with what the file says now.
+- each course's prereq rows are replaced with what the file says now. prereqs use
+  ';' (all groups), '|' (alternatives) and '+' (courses needed together, Nov 20).
 Bad rows are reported and skipped, never guessed.
 """
 
@@ -17,7 +18,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.db import SessionLocal
 from app.models import Course, CoursePrereq
-from app.normalize import normalize_course_code, parse_prereqs
+from app.normalize import normalize_course_code, parse_prereq_sets
 
 REQUIRED_COLUMNS = ["code", "title", "description", "prereqs", "other_requirements"]
 
@@ -32,6 +33,17 @@ class LoadResult:
     prereq_rows: int = 0
     table_total: int = 0
     rejected: list[str] = field(default_factory=list)
+
+
+def prereq_table_rows(code: str, groups: list[list[list[str]]]) -> list[dict]:
+    """course_prereqs rows for one course. Each '|' alternative gets its own alt_set; the
+    courses of a '+' set share one. Without '+' every row is its own alternative (as before)."""
+    return [
+        {"course_code": code, "option_group": option_group, "alt_set": alt_set, "requires_code": requires_code}
+        for option_group, options in enumerate(groups, start=1)
+        for alt_set, codes in enumerate(options, start=1)
+        for requires_code in codes
+    ]
 
 
 def load_course_info_csv(path: Path) -> LoadResult:
@@ -52,7 +64,7 @@ def load_course_info_csv(path: Path) -> LoadResult:
                 raise ValueError("blank title")
             if code in courses:
                 raise ValueError(f"duplicate course code {code}")
-            groups = parse_prereqs(row["prereqs"])
+            groups = parse_prereq_sets(row["prereqs"])
         except ValueError as error:
             result.rejected.append(f"line {line}: {row['code']!r} - {error}")
             continue
@@ -63,11 +75,7 @@ def load_course_info_csv(path: Path) -> LoadResult:
             "description": row["description"].strip() or None,
             "other_requirements": row["other_requirements"].strip() or None,
         }
-        for option_group, options in enumerate(groups, start=1):
-            for requires_code in options:
-                prereq_rows.append(
-                    {"course_code": code, "option_group": option_group, "requires_code": requires_code}
-                )
+        prereq_rows.extend(prereq_table_rows(code, groups))
 
     with SessionLocal.begin() as session:
         before = session.scalar(select(func.count()).select_from(Course))

@@ -15,16 +15,16 @@ from fastapi import Request
 from sqlalchemy import func, select
 
 from app.db import SessionLocal
-from app.demo_seed import ALEX, JORDAN, NEW_STUDENT_EMAIL, RETURNING_STUDENT_EMAIL, SAM
+from app.demo_seed import AARON, ANDY, NEW_STUDENT_EMAIL, RETURNING_STUDENT_EMAIL, VICTOR
 from app.models import Student
 
 SESSION_COOKIE = "flowsaic_session"
 
 # Username shortcuts on the login page (prototype only).
 DEMO_USERNAMES = {
-    "1": ALEX.email,
-    "2": JORDAN.email,
-    "3": SAM.email,
+    "1": ANDY.email,
+    "2": AARON.email,
+    "3": VICTOR.email,
     "4": RETURNING_STUDENT_EMAIL,  # keeps what Connect mySAU saved
     "5": NEW_STUDENT_EMAIL,  # emptied at startup, sign-in and sign-out
 }
@@ -43,7 +43,7 @@ class ApiError(Exception):
 
 
 def login_email(username: str) -> str:
-    """'1' -> Alex's email; anything else is treated as an email address."""
+    """'1' -> Andy's email; anything else is treated as an email address."""
     value = username.strip()
     return DEMO_USERNAMES.get(value, value.lower())
 

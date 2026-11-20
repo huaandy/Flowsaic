@@ -1,5 +1,7 @@
-"""Create (or update) the three fake demo students and their completed courses, create
-the returning student (user 4, keeps its mySAU data) and reset the new student (user 5).
+"""Create (or update) the three demo students (users 1-3: Andy Hua, Aaron Ezell, Victor
+Santamaria; fake records) with their courses, calendar commitments and scheduling
+preferences, create the returning student (user 4, keeps its mySAU data) and reset the new
+student (user 5).
 
 Run from backend/:  uv run python ..\\db\\scripts\\seed_demo.py
                     uv run python ..\\db\\scripts\\seed_demo.py --clear-returning   # also empty user 4
@@ -8,8 +10,9 @@ User 4 holds a real mySAU audit once someone connects it: run with --clear-retur
 before a database dump is shared.
 
 Needs the degree plans (scrape_degree_maps.py) and courses (load_course_info.py,
-import_sections.py) loaded first. Re-running updates the students in place and replaces
-only their source='manual' course rows. The students are defined in
+import_sections.py) loaded first. Re-running updates the students in place (rows under
+the pre-Nov 20 emails are renamed, not duplicated) and replaces only their source='manual'
+course rows, their seeded calendar events and their preferences. The students are defined in
 backend/app/demo_seed.py.
 """
 
@@ -36,8 +39,10 @@ def main() -> None:
         print(f"{student.name} <{student.email}>")
         print(f"  {student.plan_name}, {student.classification}, {student.earned_hours} hours earned")
         print(f"  courses: {student.completed} completed, {student.in_progress} in progress")
+        if student.events:
+            print(f"  calendar commitments: {student.events} (plus scheduling preferences)")
     print(f"Demo password for all of them: {DEMO_PASSWORD}")
-    print("Login page usernames: 1 Alex, 2 Jordan, 3 Sam, 4 Returning Student, 5 New Student (any password for now)")
+    print("Login page usernames: 1 Andy, 2 Aaron, 3 Victor, 4 Returning Student, 5 New Student (any password for now)")
 
 
 if __name__ == "__main__":

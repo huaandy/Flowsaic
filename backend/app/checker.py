@@ -7,6 +7,7 @@ Conflicts block saving; warnings don't. Each item: { code, section_ids, message 
 | Check                                                        | Result   | Code              |
 | Two sections meet on the same day at overlapping times       | Conflict | time_overlap      |
 | A prereq group has no option passed or in progress           | Conflict | missing_prereq    |
+  (an option may be a set, 'PHYS 2103 + PHYS 2101': all of it has to be passed or in progress)
 | Same course added twice                                      | Conflict | duplicate_course  |
 | Course already passed                                        | Warning  | already_completed |
 | Section is full                                              | Warning  | section_full      |
@@ -36,7 +37,6 @@ from app.models import (
     CalendarEvent,
     CompletedCourse,
     Course,
-    CoursePrereq,
     RequirementCourse,
     RequirementGroup,
     Section,
@@ -44,7 +44,15 @@ from app.models import (
     StudentRequirement,
 )
 from app.normalize import COURSE_CODE_RE, DAY_ORDER
-from app.progress import Elective, Taken, credits_from_code, parse_electives, split_taken
+from app.progress import (
+    Elective,
+    Taken,
+    credits_from_code,
+    load_prereqs,
+    missing_prereqs,
+    parse_electives,
+    split_taken,
+)
 
 CREDIT_LIMIT = 18
 
@@ -177,8 +185,7 @@ def check_schedule(sections: list[SectionInfo], student: StudentContext, credit_
 
     for code, group in by_code.items():
         # missing_prereq
-        missing = [options for options in student.prereqs.get(code, [])
-                   if not any(o in student.passed or o in student.in_progress for o in options)]
+        missing = missing_prereqs(code, student.prereqs, student.passed, student.in_progress)
         if missing:
             needs = " and ".join(" or ".join(options) for options in missing)
             conflicts.append(item("missing_prereq", group, f"{code} needs {needs} (passed or in progress)"))
@@ -268,11 +275,7 @@ def load_student_context(session, student_id: uuid.UUID) -> StudentContext:
              for r in session.scalars(select(CompletedCourse).where(CompletedCourse.student_id == student_id))]
     passed, in_progress = split_taken(taken)
 
-    prereqs: dict[str, dict[int, list[str]]] = {}
-    for code, group, requires in session.execute(
-        select(CoursePrereq.course_code, CoursePrereq.option_group, CoursePrereq.requires_code)
-    ):
-        prereqs.setdefault(code, {}).setdefault(group, []).append(requires)
+    prereqs = load_prereqs(session)
 
     audit = session.scalars(select(StudentRequirement).where(StudentRequirement.student_id == student_id)).all()
     plan: PlanScope | None = None
@@ -291,9 +294,7 @@ def load_student_context(session, student_id: uuid.UUID) -> StudentContext:
         Commitment(e.id, e.day, e.start_time, e.end_time, e.category, e.fixed)
         for e in session.scalars(select(CalendarEvent).where(CalendarEvent.student_id == student_id))
     ]
-    return StudentContext(passed, in_progress,
-                          {code: [groups_[k] for k in sorted(groups_)] for code, groups_ in prereqs.items()}, plan,
-                          commitments)
+    return StudentContext(passed, in_progress, prereqs, plan, commitments)
 
 
 def check_for_student(student_id: uuid.UUID, section_ids: list[uuid.UUID], term_id: uuid.UUID | None = None) -> dict:

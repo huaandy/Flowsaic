@@ -232,8 +232,12 @@ def test_api_defaults_match_the_column_defaults():
     for name, value in planning.DEFAULT_SETTINGS.items():
         if name not in ("photo", "updated_at"):
             assert server_default("student_settings", name) == to_text.get(value, value), name
-    for name in ("preferred_time", "preferred_days", "min_credits", "max_credits", "flexibility"):
+    # min_credits differs on purpose (Nov 20): the API's "never saved" default is 0 (no minimum) while
+    # the column default stays 12. Every save writes the whole row (merge_preferences), so the
+    # column default is never used; changing it would need a migration for nothing.
+    for name in ("preferred_time", "preferred_days", "max_credits", "flexibility"):
         assert server_default("student_preferences", name) == str(planning.DEFAULT_PREFERENCES[name]), name
+    assert planning.DEFAULT_PREFERENCES["min_credits"] == 0
     assert server_default("student_preferences", "delivery") == "'{in_person,online}'::text[]"
 
 

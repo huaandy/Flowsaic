@@ -1,6 +1,7 @@
 """Schedules for the signed-in student (contract): check, save, list, view, replace, delete.
 
 - POST /schedules/check runs the checker without saving.
+- GET /schedules/{id}/pdf: the saved schedule as a PDF for an advisor (Nov 20; app/schedule_pdf.py).
 - POST and PUT /schedules run the checker first. Conflicts block saving:
   422 { "error": "schedule_has_conflicts", "conflicts": [...] }. Warnings don't.
 - Flow (the AI) never saves; the student's Save button calls POST /schedules with source "ai".
@@ -221,6 +222,25 @@ def create(body: SaveRequest, student_id: uuid.UUID = Depends(current_student_id
 @router.get("/{schedule_id}", response_model=ScheduleDetail)
 def view(schedule_id: uuid.UUID, student_id: uuid.UUID = Depends(current_student_id)):
     return get_schedule(student_id, schedule_id)
+
+
+@router.get("/{schedule_id}/pdf", response_class=Response,
+            responses={200: {"content": {"application/pdf": {}}, "description": "The schedule as a PDF for an advisor"},
+                       404: {"description": '{ "error": "schedule_not_found" }'},
+                       503: {"description": '{ "error": "pdf_unavailable" } (Chromium not installed)'}})
+def pdf(schedule_id: uuid.UUID, student_id: uuid.UUID = Depends(current_student_id)) -> Response:
+    """The signed-in student's own saved schedule as a PDF for an academic advisor to review
+    (contract addition, Nov 20). Built from the saved version, not an unsaved draft."""
+    from app import schedule_pdf
+
+    report = schedule_pdf.load_report(student_id, schedule_id)
+    try:
+        body = schedule_pdf.html_to_pdf(schedule_pdf.render_html(report))
+    except schedule_pdf.PdfUnavailable:
+        raise ApiError(503, "pdf_unavailable") from None
+    name = schedule_pdf.pdf_filename(report.schedule["name"], report.schedule["term"])
+    return Response(body, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
 
 
 @router.put("/{schedule_id}", response_model=ScheduleDetail)

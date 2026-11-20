@@ -19,6 +19,8 @@ You need Windows 10 or 11, an internet connection, about 10 GB free, and permiss
 
 You're on the `main` branch, which is the one to use.
 
+**Don't put the Flowsaic folder inside a Google Drive (or OneDrive/Dropbox) synced folder.** It would upload your `.env` (a private key) and `data/private` to the cloud, and syncing can lock files while setup runs. GitHub Desktop's default (`Documents\GitHub\Flowsaic`) is fine.
+
 ### 2. Put the `.env` file in place
 
 1. In File Explorer, turn on **View > Show > File name extensions**, so you see the real file names.
@@ -38,6 +40,10 @@ Double-click **`setup.cmd`** in your Flowsaic folder. A black window opens and w
 - **If it just installed Docker Desktop**, it stops and lists three one-time steps. Restart Windows. Open **Docker Desktop** from the Start menu, accept its terms (you can skip signing in; no account is needed), and wait until it says **Engine running**; if it asks to install or update WSL, click yes. Then double-click `setup.cmd` again.
 - **When it's done** it says **"All set!"** after a self-test. Press any key to close the window.
 - **Running it again is always safe.** If anything goes wrong, fix what the red line says and double-click `setup.cmd` again; it picks up where it left off.
+- **Questions about the sign-in users** (only when they already exist; Enter = No for both):
+  - *"Put demo users 1-3 back to their demo data?"* Yes resets Andy, Aaron and Victor (courses, commitments, preferences). User 4 keeps its mySAU data either way, and user 5 always starts empty anyway.
+  - *"Clear user 4's mySAU data so you can test a first connect again?"* Yes empties user 4 (and puts its placeholder name back).
+  - To answer without being asked: `setup.cmd -ResetUsers yes -ClearReturning no`.
 
 ### 4. Start Flowsaic
 
@@ -51,13 +57,17 @@ Use one of these usernames and **any password**:
 
 | Username | Who | Good for |
 | --- | --- | --- |
-| `1` | Alex Rivera, Computer Science junior | The main demo: conflicts, a full section, missing prereqs |
-| `2` | Jordan Brooks, Business freshman | A first-year student |
-| `3` | Sam Okafor, Psychology senior | Close to graduating, a failed course being retaken |
+| `1` | Andy Hua, Computer Science junior | The main demo: conflicts, a full section, missing prereqs, a fixed practice that blocks afternoon classes |
+| `2` | Aaron Ezell, Business freshman | A first-year student with a morning work shift |
+| `3` | Victor Santamaria, Psychology senior | Close to graduating, a failed course being retaken, a part-time job on Tue/Thu |
 | `4` | Returning student | Connect mySAU with your own SAU account; keeps what it loads |
 | `5` | New student | Same, but emptied every time you sign in or out |
 
+Users 1–3 carry the team's names, but their records (courses, grades, commitments) are made up.
+
 All of the data stays on your own laptop. Each teammate has their own database.
+
+**Submit for approval** (Create Schedule) downloads the saved schedule as a PDF to share with your advisor. Save the schedule first.
 
 ### Getting the newest version later
 
@@ -91,6 +101,7 @@ Find the message you saw below and follow its steps. After a fix, double-click t
 - **Flow says "Flow isn't set up on this laptop yet":** your `.env` has no Gemini model. Double-click `setup.cmd` again; it adds the missing setting. Then close the `start.cmd` window and double-click `start.cmd`.
 - **Flow says "Flow can't be reached right now":** check your internet connection and send the message again. If it keeps happening, the Gemini key in your `.env` may be wrong; get a new one (step 2), paste it in place of the old one after `GEMINI_API_KEY=`, and restart `start.cmd`.
 - **Red "proxy error ... ECONNREFUSED" lines right after start:** harmless. The website is ready a few seconds before the backend; the lines stop on their own.
+- **"The schedule PDF can't be made on this laptop yet":** the browser Flowsaic uses to make PDFs isn't installed. Double-click `setup.cmd` (it installs it), then close the `start.cmd` window and double-click `start.cmd`.
 - **Connect mySAU (users 4 and 5) opens a separate browser window:** that's expected. Sign in to mySAU there yourself; you have 5 minutes. Flowsaic never sees your password.
 - **Connect mySAU says it failed with "interrupted: the server stopped":** the `start.cmd` window was closed or restarted while you were signing in. Double-click `start.cmd` and click Connect mySAU again.
 

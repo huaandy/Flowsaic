@@ -153,6 +153,8 @@ def with_saved(body: Preferences, saved: dict) -> tuple[Preferences, str | None]
     if saved.get("updated_at") is None:
         return body, None
     filled = {name: saved[name] for name in SAVED_FIELDS if name not in body.model_fields_set}
+    if filled.get("min_credits") == 0:
+        filled["min_credits"] = None  # 0 = no minimum saved: keep Auto-generate's usual target (Nov 20)
     merged = body.model_copy(update=filled)
     if merged.min_credits is not None and merged.max_credits is not None and merged.min_credits > merged.max_credits:
         merged = merged.model_copy(update={"min_credits": merged.max_credits})
@@ -164,9 +166,10 @@ def preferences_message(p: Preferences, flexibility: str | None = None) -> str:
     lines = ["Build my schedule for next term."]
     if p.target_credits:
         lines.append(f"Target: {p.target_credits} credits.")
-    elif p.min_credits is not None or p.max_credits is not None:
-        low, high = p.min_credits or 1, p.max_credits or 18
-        lines.append(f"I want {low}-{high} credits.")
+    elif p.min_credits:
+        lines.append(f"I want {p.min_credits}-{p.max_credits or 18} credits.")
+    elif p.max_credits is not None:
+        lines.append(f"Up to {p.max_credits} credits.")
     for b in p.unavailable:
         lines.append(f"I can't do {b.days.upper()} {b.start}-{b.end}.")
     lines.append("Keep my fixed calendar commitments free.")

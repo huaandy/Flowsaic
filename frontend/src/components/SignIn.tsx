@@ -29,5 +29,5 @@ export function SignIn({ onSignIn, signedOutNote }: { onSignIn: (username: strin
       {error && <p className="login-error" role="alert">{error}</p>}
       <button className="primary" type="submit" disabled={busy || !username.trim()}>{busy ? 'Signing in…' : 'Sign in'}</button>
     </form>
-    <small>Prototype accounts: 1 Alex · 2 Jordan · 3 Sam · 4 Returning student · 5 New student. Any password works.</small></section></main>
+    <small>Prototype accounts: 1 Andy · 2 Aaron · 3 Victor · 4 Returning student · 5 New student. Any password works.</small></section></main>
 }

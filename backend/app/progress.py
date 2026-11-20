@@ -17,7 +17,8 @@ Rules:
 - A group with nothing we can track (e.g. "Completion of an approved minor") is
   "not_tracked", never "met".
 - Can take = offered this term (active sections), not passed or in progress, prereqs met
-  (every prereq group has an option passed or in progress), undergraduate level.
+  (every prereq group has an option passed or in progress; an option that is a set, like
+  'PHYS 2103 + PHYS 2101', needs all its courses), undergraduate level.
 
 The functions below are pure (plain data in, plain data out) so they can be tested
 without a database; load_progress() reads the database and calls them.
@@ -42,7 +43,7 @@ from app.models import (
     StudentRequirement,
     Term,
 )
-from app.normalize import COURSE_CODE_RE
+from app.normalize import COURSE_CODE_RE, option_done, option_text
 
 NOT_EARNED = {"F", "W"}
 
@@ -410,9 +411,29 @@ def audit_progress(requirements: list[dict], passed: dict[str, float], in_progre
 # --- what can I take this term ---------------------------------------------------------------
 
 def missing_prereqs(code: str, prereqs: dict[str, list[list[str]]], passed: dict, in_progress: dict) -> list[list[str]]:
-    """Prereq groups with no option passed or in progress."""
+    """Prereq groups with no option passed or in progress. An option may be a set
+    ('PHYS 2103 + PHYS 2101'): then every course of it has to be passed or in progress."""
     return [options for options in prereqs.get(code, [])
-            if not any(o in passed or o in in_progress for o in options)]
+            if not any(option_done(o, passed, in_progress) for o in options)]
+
+
+def load_prereqs(session, codes: list[str] | None = None) -> dict[str, list[list[str]]]:
+    """course_prereqs as {course: [group: [option, ...]]}. An option is one code, or a set
+    written 'PHYS 2103 + PHYS 2101' (lecture first). Groups and alternatives keep their order."""
+    query = select(CoursePrereq.course_code, CoursePrereq.option_group, CoursePrereq.alt_set,
+                   CoursePrereq.requires_code)
+    if codes is not None:
+        query = query.where(CoursePrereq.course_code.in_(codes))
+    raw: dict[str, dict[int, dict[int, list[str]]]] = {}
+    for code, group, alt_set, requires in session.execute(query):
+        raw.setdefault(code, {}).setdefault(group, {}).setdefault(alt_set, []).append(requires)
+
+    def option(codes_: list[str]) -> str:
+        # Same stem together, higher last digit (the lecture) first: PHYS 2103 + PHYS 2101.
+        return option_text(sorted(codes_, key=lambda c: (c[:-1], -ord(c[-1]))))
+
+    return {code: [[option(sets[k]) for k in sorted(sets)] for _g, sets in sorted(groups.items())]
+            for code, groups in raw.items()}
 
 
 def can_take(
@@ -646,11 +667,7 @@ def load_progress_inputs(student_id: uuid.UUID) -> dict:
             ):
                 offered[code] = Offering(int(count), int(open_seats or 0))
 
-        prereqs: dict[str, dict[int, list[str]]] = {}
-        for code, group, requires in session.execute(
-            select(CoursePrereq.course_code, CoursePrereq.option_group, CoursePrereq.requires_code)
-        ):
-            prereqs.setdefault(code, {}).setdefault(group, []).append(requires)
+        prereqs = load_prereqs(session)
         titles: dict[str, str] = {}
         credits: dict[str, float] = {}
         for code, title, course_credits in session.execute(select(Course.code, Course.title, Course.credits)):
@@ -668,7 +685,7 @@ def load_progress_inputs(student_id: uuid.UUID) -> dict:
         titles=titles,
         credits=credits,
         offered=offered,
-        prereqs={code: [groups_[k] for k in sorted(groups_)] for code, groups_ in prereqs.items()},
+        prereqs=prereqs,
         total_hours=(float(student.total_hours_needed) if student.total_hours_needed is not None
                      else float(plan_row.total_hours) if plan_row and plan_row.total_hours else None),
     )

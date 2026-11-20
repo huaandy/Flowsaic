@@ -36,6 +36,7 @@ from app.embeddings import get_client
 from app.models import Course, Student, Term
 from app.routers import planning
 from app.normalize import COURSE_CODE_RE
+from app.progress import missing_prereqs
 
 MAX_STEPS = 10  # model calls per message (tool rounds + the final answer)
 WRAP_UP = ("(Flowsaic: two tool steps left. If you have a good schedule, call propose_schedule now; "
@@ -99,8 +100,11 @@ a name. Never ask for or mention last names, passwords, ID numbers or other pers
 
 Quick replies: end EVERY reply with one last line exactly like \
 "Quick replies: 12 credits | 15 credits | Not sure yet" giving 2 or 3 short things the student is likely to say \
-next, in their own voice, under 40 characters each. If you asked a question, they are answers to it; after a \
-schedule, likely changes ("Keep Fridays free"). The app turns that line into buttons and hides it; never mention it."""
+next, in their own voice, under 60 characters each. Each must make sense on its own as the student's whole \
+message: "Add CSCI 4353 Deep Learning", not just "CSCI 4353". If you asked a question, they are answers to it; \
+after a schedule, likely changes ("Keep Fridays free"). The app turns that line into buttons and hides it; never \
+mention it. When the student's message is one of the quick replies you offered, treat it as their answer to your \
+last message and carry on from there."""
 
 # --- tool declarations (what Gemini sees) ---------------------------------------------------
 
@@ -119,7 +123,8 @@ TOOL_DECLARATIONS = [
     types.FunctionDeclaration(
         name="get_course",
         description="One course: title, credits, description, prerequisites and whether the student meets "
-                    "them, whether it's offered this term, and how it counts for the student.",
+                    "them, whether it's offered this term, and how it counts for the student. In prerequisites, "
+                    "'A + B' means A and B are both needed (a lecture and its lab), as one option.",
         parameters_json_schema={"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]},
     ),
     types.FunctionDeclaration(
@@ -291,7 +296,8 @@ def commitment_lines(commitments: list) -> list[str]:
 def preference_line(p: dict | None) -> str:
     if not p or p.get("updated_at") is None:
         return "Saved scheduling preferences: none saved"
-    parts = [f"{p['min_credits']}-{p['max_credits']} credits"]
+    parts = [f"{p['min_credits']}-{p['max_credits']} credits" if p["min_credits"]
+             else f"no minimum, up to {p['max_credits']} credits"]
     if p["preferred_time"] != "none":
         parts.append(f"{p['preferred_time']} classes")
     if p["preferred_days"]:
@@ -388,7 +394,7 @@ class AdvisorTools:
             return {"error": f"{code} isn't in the SAU catalog"}
         ctx = self.data.context
         prereqs = ctx.prereqs.get(code, [])
-        missing = [g for g in prereqs if not any(o in ctx.passed or o in ctx.in_progress for o in g)]
+        missing = missing_prereqs(code, ctx.prereqs, ctx.passed, ctx.in_progress)
         can = next((c for c in self.data.progress["can_take"] if c["code"] == code), None)
         status = self._status(code)
         related = [
@@ -410,7 +416,7 @@ class AdvisorTools:
 
     def _status(self, code: str) -> str:
         ctx = self.data.context
-        missing = [g for g in ctx.prereqs.get(code, []) if not any(o in ctx.passed or o in ctx.in_progress for o in g)]
+        missing = missing_prereqs(code, ctx.prereqs, ctx.passed, ctx.in_progress)
         offered = code in self.data.offered_codes
         if code in ctx.passed:
             return "passed"
@@ -577,7 +583,7 @@ def run_flow(data: AdvisorData, message: str, history: list[dict], *, client, mo
         types.Content(role="user" if turn["role"] == "user" else "model", parts=[types.Part.from_text(text=turn["text"])])
         for turn in history[-20:]
     ]
-    contents.append(types.Content(role="user", parts=[types.Part.from_text(text=message)]))
+    contents.append(types.Content(role="user", parts=[types.Part.from_text(text=with_quick_reply_context(message, history))]))
 
     text = ""
     try:
@@ -610,20 +616,55 @@ def run_flow(data: AdvisorData, message: str, history: list[dict], *, client, mo
     except errors.APIError:
         raise AdvisorUnavailable("ai_unavailable") from None
 
-    text, suggestions = split_quick_replies(text)
+    text, suggestions = split_quick_replies(re.sub(r"\[Quick replies offered:[^\]\n]*\]", "", text))
     if not text:
         text = ("I put together the schedule below." if tools.proposals
                 else "Sorry, I couldn't come up with an answer for that. Could you rephrase it?")
-    if not tools.proposals and len(set(COURSE_MENTION_RE.findall(text))) >= 2:
+    if not tools.proposals and len(set(COURSE_MENTION_RE.findall(text))) >= 2 and not asks_a_question(text):
         # Flow talked about a schedule but made no card: give the student a one-click way to get one.
+        # Not when it ends on a question ("Which of these interests you?"): it's listing options and
+        # waiting for an answer, and its own quick replies are the answers (Nov 20).
         suggestions = [SHOW_AS_SCHEDULE] + [s for s in suggestions if s != SHOW_AS_SCHEDULE][: MAX_QUICK_REPLIES - 1]
+    suggestions = [personalize(s, data.first_name) for s in suggestions]
     return {
         "reply": personalize(text, data.first_name),
-        "memory": text + _proposal_memory(tools.proposals),
+        "memory": text + _proposal_memory(tools.proposals) + _offered_memory(suggestions),
         "proposals": tools.proposals,
-        "suggestions": [personalize(s, data.first_name) for s in suggestions],
+        "suggestions": suggestions,
         "tools_used": tools.used,
     }
+
+
+# Quick-reply buttons (Nov 20): Flow's memory lists the buttons it offered, so a tapped button
+# ("CSCI 4353 Deep Learning") reaches Gemini as an answer to its question, not a bare course name.
+OFFERED_RE = re.compile(r"\[Quick replies offered: (?P<items>[^\]\n]*)\]\s*$")
+TAPPED_NOTE = "(Picked from the quick replies you offered in your last message; answer in that context.)"
+
+
+def asks_a_question(text: str) -> bool:
+    """The reply's last line ends with a question mark (markdown and quotes ignored)."""
+    lines = [line.strip().rstrip("*_\"'”) ") for line in text.strip().splitlines() if line.strip()]
+    return bool(lines) and lines[-1].endswith("?")
+
+
+def _offered_memory(suggestions: list[str]) -> str:
+    return "\n[Quick replies offered: " + " | ".join(suggestions) + "]" if suggestions else ""
+
+
+def offered_quick_replies(history: list[dict]) -> list[str]:
+    """The buttons under Flow's last reply, read back from its memory in history."""
+    if not history or history[-1].get("role") == "user":
+        return []
+    found = OFFERED_RE.search(history[-1].get("text") or "")
+    return [item.strip() for item in found["items"].split("|") if item.strip()] if found else []
+
+
+def with_quick_reply_context(message: str, history: list[dict]) -> str:
+    """A message that is exactly one of the offered buttons gets one line of context for Gemini.
+    What the student typed or tapped is still what the chat shows."""
+    if message.strip().lower() in {item.lower() for item in offered_quick_replies(history)}:
+        return f"{message.strip()}\n{TAPPED_NOTE}"
+    return message
 
 
 QUICK_REPLIES_RE = re.compile(r"^[ \t*_>-]*quick[ -]?replies[ \t*_]*:[ \t*_]*(?P<items>.*?)[ \t*_]*$", re.I | re.M)
