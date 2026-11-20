@@ -154,7 +154,7 @@ const DELIVERY_TO_UI: Record<Delivery, string> = { in_person: 'Face-to-face', on
 
 /** Travel distance and minimum rating stay mock (this device only); the rest is the backend's. */
 export type MockPreferenceFields = Pick<SchedulingPreferences, 'distance' | 'minRating'>
-export const MOCK_PREFERENCE_DEFAULTS: MockPreferenceFields = { distance: 'Under 15 minutes', minRating: 4 }
+export const MOCK_PREFERENCE_DEFAULTS: MockPreferenceFields = { distance: 'No preference', minRating: 4 }
 
 export function preferencesToUi(api: ApiPreferences, mock: MockPreferenceFields): SchedulingPreferences {
   return {

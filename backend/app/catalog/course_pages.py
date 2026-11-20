@@ -16,7 +16,8 @@ Files (all under data/):
   format as the Nov 16 scrape, so data/raw/build_course_info.py still rebuilds offline.
   The file name is from that scrape; it holds the catalog in settings.catalog_catoid.
 - raw/course_pages_fetched.json: {coid: ISO time the page was last fetched}.
-- course_info.csv and course_info_needs_review.csv: rebuilt from the raw file.
+- course_info.csv and course_info_needs_review.csv: rebuilt from the raw file, with
+  course_prereq_overrides.csv (reviewed hand fixes) applied last.
 
 At each checkpoint (every CHECKPOINT_PAGES pages, and at the end) the CSVs are rebuilt;
 if any course row changed, the CSV is loaded and only the changed courses are re-embedded.
@@ -31,7 +32,7 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
-from app.catalog.course_build import build_rows, write_csvs
+from app.catalog.course_build import apply_overrides, build_rows, load_overrides, write_csvs
 from app.catalog.http import PoliteClient
 from app.config import REPO_DIR, get_settings
 
@@ -42,6 +43,8 @@ RAW_PATH = DATA_DIR / "raw" / "sau_catalog_2026_27_raw.json"
 FETCHED_PATH = DATA_DIR / "raw" / "course_pages_fetched.json"
 COURSE_INFO_PATH = DATA_DIR / "course_info.csv"
 NEEDS_REVIEW_PATH = DATA_DIR / "course_info_needs_review.csv"
+# Reviewed hand fixes, applied after every rebuild so they are never lost (Nov 20).
+OVERRIDES_PATH = DATA_DIR / "course_prereq_overrides.csv"
 CHECKPOINT_PAGES = 30  # about an hour of crawling at 120 s a page
 # The raw file was scraped on Nov 16; treat its pages as fetched then, so the first
 # rolling pass starts a week later instead of re-fetching everything at once.
@@ -119,8 +122,17 @@ def stale_coids(coids: list[str], fetched: dict[str, str], now: datetime, max_ag
     return sorted(stale, key=lambda c: (c in fetched, fetched.get(c, "")))
 
 
-def _rows_by_code(raw: list[list[str]]) -> dict[str, dict]:
-    return {row["code"]: row for row in build_rows(raw)}
+def built_rows(raw: list[list[str]], log_line: Callable[[str], None] = log.info) -> list[dict]:
+    """The rows of course_info.csv: the parser's, then the reviewed overrides on top."""
+    overrides, problems = load_overrides(OVERRIDES_PATH)
+    rows, unknown = apply_overrides(build_rows(raw), overrides)
+    for problem in problems + unknown:
+        log_line(f"override not applied: {problem}")
+    return rows
+
+
+def _rows_by_code(raw: list[list[str]], log_line: Callable[[str], None] = log.info) -> dict[str, dict]:
+    return {row["code"]: row for row in built_rows(raw, log_line)}
 
 
 def _csv_rows() -> dict[str, dict]:
@@ -137,7 +149,7 @@ def _apply_changes(raw, previous_rows, log_line, load_and_embed: bool, always_lo
     isn't embedded yet. always_load is for the end of a run: a fresh database (a teammate's
     first setup) has an up-to-date CSV but no courses, so "nothing changed" isn't enough
     (fixed Nov 18). Loading is an upsert and embedding skips unchanged text, so it's cheap."""
-    rows = _rows_by_code(raw)
+    rows = _rows_by_code(raw, log_line)
     changed = sum(1 for code, row in rows.items() if previous_rows.get(code) != row)
     if not changed and not always_load:
         return 0, rows

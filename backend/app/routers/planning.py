@@ -33,8 +33,10 @@ MAX_EVENTS = 60
 MAX_PHOTO_CHARS = 1_400_000
 PHOTO_RE = re.compile(r"^data:image/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+=*$")
 
+# A student who never saved preferences starts with none (Nov 20): no minimum (0 = no minimum
+# credits, everywhere), up to 18. AI suggest and Flow ignore an unsaved row anyway.
 DEFAULT_PREFERENCES = {
-    "preferred_time": "none", "preferred_days": "", "min_credits": 12, "max_credits": 18,
+    "preferred_time": "none", "preferred_days": "", "min_credits": 0, "max_credits": 18,
     "delivery": ["in_person", "online"], "flexibility": "balanced", "updated_at": None,
 }
 DEFAULT_SETTINGS = {

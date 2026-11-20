@@ -115,7 +115,8 @@ class EligibleCourse(BaseModel):
 class BlockedCourse(BaseModel):
     code: str
     title: str | None
-    missing_prereqs: list[list[str]] = Field(description="Prereq groups with no option done; any one option per group")
+    missing_prereqs: list[list[str]] = Field(description="Prereq groups with no option done; any one option per group. "
+                                              "'A + B' = a set, all of it needed")
     counts_toward: list[str]
 
 

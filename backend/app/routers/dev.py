@@ -24,6 +24,7 @@ from app.config import get_settings
 from app.db import get_db
 from app.embeddings import embed_texts, get_client, query_prompt
 from app.models import Base, Course, CoursePrereq, DocChunk, Section, Term
+from app.progress import load_prereqs
 
 router = APIRouter(prefix="/dev", tags=["dev (test page, not in the contract)"])
 
@@ -85,15 +86,7 @@ def course_details(session: Session, courses: list[Course]) -> list[dict]:
     """Courses with their prereq groups and sections, in the order given."""
     if not courses:
         return []
-    prereqs: dict[str, dict[int, list[str]]] = {}
-    for row in session.execute(
-        select(CoursePrereq)
-        .where(CoursePrereq.course_code.in_([course.code for course in courses]))
-        .order_by(CoursePrereq.option_group, CoursePrereq.requires_code)
-    ).scalars():
-        prereqs.setdefault(row.course_code, {}).setdefault(row.option_group, []).append(
-            row.requires_code
-        )
+    prereqs = load_prereqs(session, [course.code for course in courses])
 
     sections: dict = {}
     for section, term_name in session.execute(
@@ -128,7 +121,7 @@ def course_details(session: Session, courses: list[Course]) -> list[dict]:
             "description": course.description,
             "other_requirements": course.other_requirements,
             # Each inner list is one group: any one course in it satisfies that group.
-            "prereq_groups": list(prereqs.get(course.code, {}).values()),
+            "prereq_groups": prereqs.get(course.code, []),
             "sections": sections.get(course.id, []),
         }
         for course in courses

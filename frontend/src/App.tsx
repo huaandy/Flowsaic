@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { ApiError, api, onUnauthorized } from './api/client'
+import { ApiError, api, onUnauthorized, saveFile } from './api/client'
 import { DEFAULT_SETTINGS, MOCK_PREFERENCE_DEFAULTS, type EventDraft, type MockPreferenceFields, classEvents, defaultSection, draftSection, eventDraftToApi, eventToUi, preferencesToApi, preferencesToUi, settingsToApi, settingsToUi } from './api/adapters'
 import { friendlyError } from './api/errors'
 import type { ApiCatalogCourse, ApiCompletedCourse, ApiEvent, ApiPreferences, ApiProgress, ApiProposal, ApiScheduleDetail, ApiScheduleSection, ApiScheduleSummary, ApiSearchResult, ApiStudent, ApiTerm } from './api/types'
 import { HeaderSearch } from './components/HeaderSearch'
 import { Icon } from './components/Icon'
 import { SignIn } from './components/SignIn'
-import { initialPlannedTerms, completedTermName, mockAdvisorName, type PlannedTerms } from './mock'
+import { initialPlannedTerms, completedTermName, type PlannedTerms } from './mock'
 import { AIAdvisor, type AdvisorMessage } from './pages/AIAdvisor'
 import { CalendarPage } from './pages/CalendarPage'
 import { Catalog, type CatalogFocus } from './pages/Catalog'
@@ -72,7 +72,9 @@ function App() {
   const [apiPreferences, setApiPreferences] = useState<ApiPreferences | null>(null)
   const [settings, setSettings] = useState<AppSettings>(() => store.get('flowsaic-theme', DEFAULT_SETTINGS))
   const [photo, setPhoto] = useState('')
-  const [mockPreferences, setMockPreferences] = useState<MockPreferenceFields>(() => store.get('flowsaic-preference-mock', MOCK_PREFERENCE_DEFAULTS))
+  // Travel distance and minimum rating are mock (this device only), kept per student. A student who
+  // never saved preferences (users 4 and 5 at first) always starts from the defaults.
+  const [mockPreferences, setMockPreferences] = useState<MockPreferenceFields>(MOCK_PREFERENCE_DEFAULTS)
   // The Create Schedule draft, and the saved schedule whose classes show on the calendar.
   const [draft, setDraftState] = useState<ScheduleDraft>(EMPTY_DRAFT)
   const [calendarScheduleId, setCalendarScheduleId] = useState('')
@@ -106,6 +108,7 @@ function App() {
   const resetSession = () => {
     setMe(null); setProgress(null); setCompleted([]); setSchedules([]); setEvents([]); setApiPreferences(null); setPhoto('')
     setDraftState(EMPTY_DRAFT); setCalendarScheduleId(''); setCalendarSections([]); setFlowMessages([]); setFlowLoading(false)
+    setMockPreferences(MOCK_PREFERENCE_DEFAULTS)
     setCatalogFocus(null); setConnect({ status: 'idle', message: '' }); setPage('Dashboard')
     if (connectTimer.current) window.clearTimeout(connectTimer.current)
   }
@@ -122,6 +125,8 @@ function App() {
     if (schedulesResult.status === 'fulfilled') setSchedules(schedulesResult.value)
     if (eventsResult.status === 'fulfilled') setEvents(eventsResult.value)
     if (preferencesResult.status === 'fulfilled') setApiPreferences(preferencesResult.value)
+    const savedBefore = preferencesResult.status === 'fulfilled' && preferencesResult.value.updated_at !== null
+    setMockPreferences(savedBefore ? store.get(`flowsaic-preference-mock:${student.id}`, MOCK_PREFERENCE_DEFAULTS) : MOCK_PREFERENCE_DEFAULTS)
     if (settingsResult.status === 'fulfilled') {
       const saved = settingsToUi(settingsResult.value)
       setSettings(saved)
@@ -153,7 +158,6 @@ function App() {
   }, [calendarScheduleId])
 
   useEffect(() => store.set('flowsaic-planned-terms', plannedTerms), [plannedTerms])
-  useEffect(() => store.set('flowsaic-preference-mock', mockPreferences), [mockPreferences])
   useEffect(() => {
     applyTheme(settings)
     const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
@@ -183,6 +187,18 @@ function App() {
   }
 
   const updateScheduleStatus = (status: ScheduleStatus) => { setScheduleStatus(status); store.set('flowsaic-schedule-status', status) }
+  // Create Schedule's "Submit for approval": downloads the saved schedule as a PDF for an advisor
+  // (GET /schedules/{id}/pdf). There is no advisor side yet, so nothing is submitted anywhere.
+  const downloadSchedulePdf = async () => {
+    if (!draft.scheduleId) return
+    try {
+      const { blob, filename } = await api.schedulePdf(draft.scheduleId)
+      saveFile(blob, filename)
+      setToast(`Schedule PDF downloaded (${filename}). Share it with your advisor.`)
+    } catch (error) {
+      if (!(error instanceof ApiError && error.status === 401)) showError(error, 'The schedule PDF couldn’t be made. Try again.')
+    }
+  }
   const go = (p: Page) => { if (p === 'Course Catalog') setCatalogFocus(null); setPage(p); setSidebarOpen(false) }
   const openAccountPage = (destination: 'My Profile' | 'Scheduling Preferences' | 'Settings' | 'Help & Support') => { if (!['My Profile', 'Scheduling Preferences', 'Settings', 'Help & Support'].includes(page)) setAccountReturnPage(page); setPage(destination); setAccountMenu(null); setSidebarOpen(false) }
   const openCourseInCatalog = (code: string, id?: string) => { setCatalogFocus({ code, id, nonce: Date.now() }); setPage('Course Catalog') }
@@ -288,7 +304,9 @@ function App() {
   const savePreferences = async (ui: SchedulingPreferences) => {
     try {
       setApiPreferences(await api.savePreferences(preferencesToApi(ui)))
-      setMockPreferences({ distance: ui.distance, minRating: ui.minRating })
+      const mock = { distance: ui.distance, minRating: ui.minRating }
+      setMockPreferences(mock)
+      if (me) store.set(`flowsaic-preference-mock:${me.id}`, mock)
       setToast('Scheduling preferences saved')
       return true
     } catch (error) { showError(error); return false }
@@ -339,7 +357,7 @@ function App() {
         {page === 'Course Catalog' && <><section className="page-title catalog-page-title"><div><span className="eyebrow">EXPLORE COURSES</span><h1>Course catalog</h1><p>Find classes that fit your goals and your schedule.</p></div></section><Catalog termId={termId} termName={termName} focus={catalogFocus} draftCodes={draftCodes} addToDraft={addCourseToDraft} removeFromDraft={removeCodeFromDraft} openSchedule={openCourseSchedule} onError={showError} /></>}
         {page === 'Semester Planner' && <><section className="page-title"><div><span className="eyebrow">YOUR ROADMAP · PREVIEW</span><h1 style={{ fontSize: 36 }}>Semester planner</h1><p style={{ fontSize: 16 }}>Drag courses to map out your path to graduation. This multi-term planner is a preview with sample courses.</p></div></section><Planner plannedTerms={plannedTerms} setPlannedTerms={setPlannedTerms} openCatalog={code => openCourseInCatalog(code)} openSchedule={(_codes, plannedTerm) => { setToast(`The planner uses sample courses. Build ${plannedTerm === termName ? 'it' : termName} with real sections here.`); setPage('Create Schedule') }} askFlow={askFlow} preferences={preferences} /></>}
         {page === 'My Calendar' && <><section className="page-title"><div><span className="eyebrow">YOUR WEEK</span><h1 style={{ fontSize: 36 }}>My calendar</h1><p style={{ fontSize: 16 }}>Classes, work, and life — all in one place.</p></div></section><CalendarPage events={personalEvents} classEvents={scheduleClasses} proposedEvents={proposedEvents} schedules={termSchedules.map(item => ({ id: item.id, name: item.name }))} activeScheduleId={calendarScheduleId} onScheduleChange={setCalendarScheduleId} onAdd={addEvent} onUpdate={updateEvent} onRemove={removeEvent} askFlow={() => askFlow('Look at my calendar commitments and help me plan my classes around them.')} /></>}
-        {page === 'Create Schedule' && <><section className="page-title create-schedule-title"><div><span className="eyebrow">SCHEDULE BUILDER</span><h1>Create your schedule</h1><p>Search courses, build your week, or let Flowsaic create a balanced schedule for you.</p></div></section><CreateSchedule termId={termId} termName={termName} hasPlan={progress ? progress.source !== 'none' : Boolean(me.degree_plan)} preferences={preferences} draft={draft} setDraft={setDraft} commitments={personalEvents} savedSchedules={termSchedules} onLoadSchedule={loadSavedSchedule} onSaved={onScheduleSaved} onDeleted={id => { refreshSchedules(); if (id === calendarScheduleId) setCalendarScheduleId('') }} submit={() => { updateScheduleStatus('Pending Approval'); setToast(`Schedule submitted to ${mockAdvisorName} for approval (preview)`) }} askAdvisor={() => go('AI Advisor')} openPreferences={() => openAccountPage('Scheduling Preferences')} onToast={setToast} onError={showError} /></>}
+        {page === 'Create Schedule' && <><section className="page-title create-schedule-title"><div><span className="eyebrow">SCHEDULE BUILDER</span><h1>Create your schedule</h1><p>Search courses, build your week, or let Flowsaic create a balanced schedule for you.</p></div></section><CreateSchedule termId={termId} termName={termName} hasPlan={progress ? progress.source !== 'none' : Boolean(me.degree_plan)} preferences={preferences} draft={draft} setDraft={setDraft} commitments={personalEvents} savedSchedules={termSchedules} onLoadSchedule={loadSavedSchedule} onSaved={onScheduleSaved} onDeleted={id => { refreshSchedules(); if (id === calendarScheduleId) setCalendarScheduleId('') }} submit={downloadSchedulePdf} askAdvisor={() => go('AI Advisor')} openPreferences={() => openAccountPage('Scheduling Preferences')} onToast={setToast} onError={showError} /></>}
         {page === 'AI Advisor' && <><section className="page-title ai-advisor-title"><div><span className="eyebrow">PERSONALIZED GUIDANCE</span><h1>Meet Flow, your AI advisor</h1><p>Friendly guidance grounded in your degree plan, courses, and commitments.</p></div></section><AIAdvisor messages={flowMessages} loading={flowLoading} studentName={greetingName} onSend={sendToFlow} onNew={() => setFlowMessages([])} onSaveProposal={saveProposal} onOpenProposal={openProposal} /></>}
         {page === 'Advisor Dashboard' && <><section className="page-title"><div><span className="eyebrow">ADVISOR WORKSPACE · PREVIEW</span><h1>Student schedule reviews</h1><p>Review plans, share feedback, and keep students on track.</p></div></section><article className="card review"><div className="avatar">{initials}</div><div><h2>{profile.name}</h2><p>{termName} · {termSchedules[0]?.credits ?? 0} credits · Submitted (preview)</p></div><span className="pill orange">Pending review</span><button className="ghost" onClick={() => setToast(`Revision request sent to ${profile.name.split(' ')[0]} (preview)`)}>Request revision</button><button className="primary" onClick={() => { updateScheduleStatus('Approved'); setToast(`${profile.name.split(' ')[0]}’s schedule was approved (preview)`) }}>Approve schedule</button></article></>}
         {page === 'My Profile' && <><section className="page-title account-page-title"><div><span className="eyebrow">ACCOUNT</span><h1>My profile</h1><p style={{ fontSize: 16 }}>Manage your student information and review your academic summary.</p></div>{backButton}</section><ProfilePage me={me} profile={profile} progress={progress} onPhotoSave={savePhoto} onPhotoError={setToast} go={go} connect={connect} onConnect={startConnect} /></>}

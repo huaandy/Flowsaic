@@ -9,11 +9,16 @@
   Optional switches (for running without questions):
     -Schedule live|saved|keep   live = from mySAU (you sign in), saved = the Nov 16 file,
                                 keep = leave what's loaded
-    -ResetUsers yes|no          yes = recreate the demo users and empty user 5 (user 4 keeps its mySAU data)
+    -ResetUsers yes|no          yes = put demo users 1-3 back to their demo data (courses, commitments,
+                                preferences). User 4 (returning student) keeps its mySAU data either way;
+                                user 5 (new student) always starts empty anyway
+    -ClearReturning yes|no      yes = clear user 4's mySAU data so you can test a first connect again
+                                (default no)
 #>
 param(
     [ValidateSet("ask", "live", "saved", "keep")] [string]$Schedule = "ask",
-    [ValidateSet("ask", "yes", "no")] [string]$ResetUsers = "ask"
+    [ValidateSet("ask", "yes", "no")] [string]$ResetUsers = "ask",
+    [ValidateSet("ask", "yes", "no")] [string]$ClearReturning = "ask"
 )
 
 # Native tools (uv, docker) write progress to stderr; never treat that as a failure.
@@ -291,19 +296,36 @@ uv run python ..\db\scripts\scrape_degree_maps.py --offline
 if ($LASTEXITCODE -ne 0) { Stop-Setup "Loading the degree plans failed." }
 Ok "Degree plans loaded"
 
+# Users 1-3 are demo students. User 4 is a returning student: it keeps what Connect mySAU
+# loaded. User 5 is a new student: it is emptied at every startup, sign-in and sign-out, so
+# it always starts empty without any help from setup.
 $counts = Get-Counts
+$firstTime = $counts["students"] -eq 0
 $reset = $ResetUsers -eq "yes"
-if ($counts["students"] -eq 0) {
+$clear = $ClearReturning -eq "yes"
+if ($firstTime) {
     $reset = $true
-} elseif ($ResetUsers -eq "ask") {
-    $reset = Ask "Sign-in users already exist. Recreate them? (This empties user 5. User 4 keeps its mySAU data.)" $false
+    $clear = $false
+} else {
+    if ($ResetUsers -eq "ask") {
+        Write-Host "   Users 1-3 are demo students. User 4 (returning student) keeps its mySAU data."
+        Write-Host "   User 5 (new student) always starts empty, so it never needs resetting."
+        $reset = Ask "Put demo users 1-3 back to their demo data (courses, commitments, preferences)?" $false
+    }
+    if ($ClearReturning -eq "ask") {
+        $clear = Ask "Clear user 4's mySAU data so you can test a first connect again?" $false
+    }
 }
-if ($reset) {
+if ($clear) {
+    uv run python ..\db\scripts\seed_demo.py --clear-returning
+    if ($LASTEXITCODE -ne 0) { Stop-Setup "Creating the sign-in users failed." }
+    Ok "Sign-in users 1-5 are ready; user 4's mySAU data was cleared"
+} elseif ($reset) {
     uv run python ..\db\scripts\seed_demo.py
     if ($LASTEXITCODE -ne 0) { Stop-Setup "Creating the sign-in users failed." }
-    Ok "Sign-in users 1-5 are ready"
+    Ok "Sign-in users 1-5 are ready (user 4 kept its mySAU data)"
 } else {
-    Ok "Kept the existing sign-in users"
+    Ok "Kept the existing sign-in users (user 4 kept its mySAU data)"
 }
 
 # --- 7. Final check -----------------------------------------------------------------------------

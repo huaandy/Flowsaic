@@ -101,22 +101,61 @@ def parse_term(raw: str) -> tuple[str, str]:
     return value, f"{season} {year}"
 
 
-def parse_prereqs(raw: str) -> list[list[str]]:
-    """'CHEM 3103;MATH 1023|MATH 1053' -> [['CHEM 3103'], ['MATH 1023', 'MATH 1053']].
+# Alternative sets (Nov 20): inside one option, '+' joins courses that are all needed together,
+# e.g. 'PHYS 2103+PHYS 2101|PHYS 2213+PHYS 2211' = (PHYS 2103 and PHYS 2101) or (PHYS 2213 and
+# PHYS 2211). In memory and in the API an option is a string; a set reads 'PHYS 2103 + PHYS 2101'.
+SET_JOIN = " + "
+
+
+def parse_prereq_sets(raw: str) -> list[list[list[str]]]:
+    """'CHEM 3103;MATH 1023|MATH 1053' -> [[['CHEM 3103']], [['MATH 1023'], ['MATH 1053']]].
 
     ';' separates groups that are all required. '|' separates alternatives inside a group.
-    Blank -> [] (no prereqs).
+    '+' joins the courses of one alternative that are all needed. Blank -> [] (no prereqs).
+    A file without '+' loads exactly as before Nov 20 (every option is one course).
     """
     if not raw.strip():
         return []
-    groups: list[list[str]] = []
+    groups: list[list[list[str]]] = []
     for group_text in raw.split(";"):
-        options: list[str] = []
+        options: list[list[str]] = []
         for option_text in group_text.split("|"):
-            code = " ".join(option_text.split())
-            if not COURSE_CODE_RE.fullmatch(code):
-                raise ValueError(f"prereq not understood: {raw!r}")
-            if code not in options:
-                options.append(code)
+            codes: list[str] = []
+            for code_text in option_text.split("+"):
+                code = " ".join(code_text.split())
+                if not COURSE_CODE_RE.fullmatch(code):
+                    raise ValueError(f"prereq not understood: {raw!r}")
+                if code not in codes:
+                    codes.append(code)
+            if codes not in options:
+                options.append(codes)
         groups.append(options)
     return groups
+
+
+def option_text(codes: list[str]) -> str:
+    """['PHYS 2103', 'PHYS 2101'] -> 'PHYS 2103 + PHYS 2101'; one code stays itself."""
+    return SET_JOIN.join(codes)
+
+
+def option_codes(option: str) -> list[str]:
+    """'PHYS 2103 + PHYS 2101' -> ['PHYS 2103', 'PHYS 2101']."""
+    return [code.strip() for code in option.split("+")]
+
+
+def parse_prereqs(raw: str) -> list[list[str]]:
+    """'CHEM 3103;MATH 1023|MATH 1053' -> [['CHEM 3103'], ['MATH 1023', 'MATH 1053']].
+
+    The in-memory shape: groups of option strings ('PHYS 2103 + PHYS 2101' for a set).
+    """
+    return [[option_text(codes) for codes in group] for group in parse_prereq_sets(raw)]
+
+
+def option_done(option: str, *done: dict | set) -> bool:
+    """Every course of the option is in one of the given collections (passed, in progress)."""
+    return all(any(code in d for d in done) for code in option_codes(option))
+
+
+def prereq_csv(groups: list[list[str]]) -> str:
+    """The in-memory shape back to CSV syntax: [['A + B', 'C']] -> 'A+B|C'."""
+    return ";".join("|".join("+".join(option_codes(o)) for o in group) for group in groups)

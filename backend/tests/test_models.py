@@ -1,4 +1,5 @@
-"""Schema checks for migrations 0002 (data retrieval) and 0003 (student planning). No database needed.
+"""Schema checks for migrations 0002 (data retrieval), 0003 (student planning) and 0004 (prereq
+alternative sets). No database needed.
 
 `uv run alembic check` against a migrated database confirms the models and the
 migrations agree; these tests pin the parts other code relies on.
@@ -23,9 +24,10 @@ def check_constraints(table_name: str) -> set[str]:
     return {str(constraint.sqltext) for constraint in table.constraints if hasattr(constraint, "sqltext")}
 
 
-def test_migrations_form_one_line_ending_at_0003():
+def test_migrations_form_one_line_ending_at_0004():
     script = ScriptDirectory.from_config(Config(str(BACKEND_DIR / "alembic.ini")))
-    assert script.get_heads() == ["0003"]
+    assert script.get_heads() == ["0004"]
+    assert script.get_revision("0004").down_revision == "0003"
     assert script.get_revision("0003").down_revision == "0002"
     assert script.get_revision("0002").down_revision == "0001"
 
@@ -125,3 +127,9 @@ def test_migration_0003_creates_exactly_the_planning_tables():
     # Applies on top of existing data: it never touches an existing table.
     for forbidden in ("drop_", "alter_column", "add_column", "op.execute"):
         assert forbidden not in upgrade
+
+
+def test_course_prereqs_have_alternative_sets():
+    table = Base.metadata.tables["course_prereqs"]
+    assert [c.name for c in table.primary_key.columns] == ["course_code", "option_group", "alt_set", "requires_code"]
+    assert not columns("course_prereqs")["alt_set"].nullable

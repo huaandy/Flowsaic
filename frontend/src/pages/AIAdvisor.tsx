@@ -9,7 +9,7 @@ export type AdvisorMessage = { role: 'user' | 'ai'; text: string; memory?: strin
 const STARTERS = {
   degree: 'Review my degree progress. What do I still need?',
   semester: 'What courses should I take next semester?',
-  schedule: 'Build me a balanced schedule for next term around my commitments.',
+  schedule: 'Help me build my schedule for next semester. Pick courses that keep me on track for my degree, and ask me anything you need to know.',
   courses: 'Help me explore electives that fit my interests.',
 }
 

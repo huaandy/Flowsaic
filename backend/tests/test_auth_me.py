@@ -9,17 +9,17 @@ from fastapi.testclient import TestClient
 
 from app import auth
 from app import demo_seed
-from app.demo_seed import ALEX, NEW_STUDENT_EMAIL, RETURNING_STUDENT_EMAIL
+from app.demo_seed import ANDY, NEW_STUDENT_EMAIL, RETURNING_STUDENT_EMAIL
 from app.main import app
 from app.mysau import run as mysau_run
 from app.routers import auth as auth_router
 from app.routers import me as me_router
 
-ALEX_ID = uuid.uuid4()
+ANDY_ID = uuid.uuid4()
 RETURNING_ID = uuid.uuid4()
 NEW_ID = uuid.uuid4()
-IDS = {ALEX.email: ALEX_ID, RETURNING_STUDENT_EMAIL: RETURNING_ID, NEW_STUDENT_EMAIL: NEW_ID}
-NAMES = {ALEX_ID: "Alex Rivera", RETURNING_ID: "Returning Student", NEW_ID: "New Student"}
+IDS = {ANDY.email: ANDY_ID, RETURNING_STUDENT_EMAIL: RETURNING_ID, NEW_STUDENT_EMAIL: NEW_ID}
+NAMES = {ANDY_ID: "Andy Hua", RETURNING_ID: "Returning Student", NEW_ID: "New Student"}
 
 
 def profile(student_id):
@@ -56,7 +56,7 @@ def client(monkeypatch, cleared):
 
 
 @pytest.mark.parametrize("username, expected", [
-    ("1", ALEX.email), (" 4 ", RETURNING_STUDENT_EMAIL), ("5", NEW_STUDENT_EMAIL), ("A@B.Test", "a@b.test"),
+    ("1", ANDY.email), (" 4 ", RETURNING_STUDENT_EMAIL), ("5", NEW_STUDENT_EMAIL), ("A@B.Test", "a@b.test"),
 ])
 def test_usernames_1_to_5_are_shortcuts(username, expected):
     assert auth.login_email(username) == expected
@@ -64,10 +64,10 @@ def test_usernames_1_to_5_are_shortcuts(username, expected):
 
 def test_login_with_any_password_sets_a_session(client):
     response = client.post("/auth/login", json={"email": "1", "password": "anything at all"})
-    assert response.status_code == 200 and response.json()["name"] == "Alex Rivera"
+    assert response.status_code == 200 and response.json()["name"] == "Andy Hua"
     cookie = response.headers["set-cookie"]
     assert auth.SESSION_COOKIE in cookie and "HttpOnly" in cookie
-    assert client.get("/me").json()["id"] == str(ALEX_ID)
+    assert client.get("/me").json()["id"] == str(ANDY_ID)
     # An empty password works too, for now.
     assert client.post("/auth/login", json={"email": "4"}).json()["name"] == "Returning Student"
     assert client.get("/me").json()["id"] == str(RETURNING_ID)

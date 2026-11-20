@@ -87,12 +87,16 @@ class Course(Base):
 
 
 class CoursePrereq(Base):
-    """One row per prereq. Rows sharing an option_group are alternatives (any one counts)."""
+    """One row per prereq course. Every option_group must be met. Inside a group, each
+    alt_set is one alternative (any one counts); the rows of one alt_set are all needed
+    together (a lecture+lab pair, say). Migration 0004 (Nov 20) added alt_set; before it
+    every row was its own alternative, which is what a CSV without '+' still loads as."""
 
     __tablename__ = "course_prereqs"
 
     course_code: Mapped[str] = mapped_column(Text, primary_key=True)
     option_group: Mapped[int] = mapped_column(Integer, primary_key=True)
+    alt_set: Mapped[int] = mapped_column(Integer, primary_key=True)
     requires_code: Mapped[str] = mapped_column(Text, primary_key=True)
 
 

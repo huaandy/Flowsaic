@@ -76,7 +76,8 @@ class CatalogCourse(BaseModel):
     description: str | None
     other_requirements: str | None = Field(description="Shown, not enforced (instructor permission, standing...)")
     level: int = Field(description="From the course number: 1000, 2000, 3000, 4000 (5000+ = graduate)")
-    prereqs: list[list[str]] = Field(description="Option groups: every group needs one of its codes")
+    prereqs: list[list[str]] = Field(description="Option groups: every group needs one of its options. An option is a code, "
+                                              "or a set like 'PHYS 2103 + PHYS 2101' (all of it needed)")
     eligibility: Literal["eligible", "missing_prereq", "completed", "in_progress"]
     missing_prereqs: list[list[str]] = Field(description="The prereq groups the student hasn't met")
     on_my_plan: bool
